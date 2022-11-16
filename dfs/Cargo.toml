@@ -1,0 +1,13 @@
+[package]
+name = "dfs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htmls
+
+[dependencies]
+anyhow = "1.0.66"
+async-raft = "0.6.1"
+serde = "1.0.147"
+thiserror = "1.0.37"
+tokio = "1.21.2"
