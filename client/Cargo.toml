@@ -6,3 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+env_logger = "0.9.3"
+# fuse = "0.3.1"
+rustydav = "0.1.3"
+async-fuse = { git = "https://github.com/jmpq/async-fuse-rs" }
+async-trait = "0.1.58"
+libc = "0.2.137"
+tokio = "1.18.0"
+clap = { version = "4.0.26", features = ["derive"] }
+ctrlc = "3.2.3"
