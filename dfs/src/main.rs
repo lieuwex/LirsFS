@@ -4,14 +4,19 @@ use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
 use network::AppRaftNetwork;
+use once_cell::sync::OnceCell;
 use storage::AppRaftStorage;
 
 mod client_req;
 mod client_res;
 mod network;
+mod server;
+mod service;
 mod storage;
 
 type AppRaft = Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>;
+
+pub static RAFT: OnceCell<AppRaft> = OnceCell::new();
 
 async fn run_app(raft: AppRaft) -> ! {
     loop {}
@@ -37,6 +42,8 @@ async fn main() {
     // runs the Raft core logic. Keep this Raft instance around
     // for calling API methods based on events in your app.
     let raft = Raft::new(node_id, config, network, storage);
+
+    RAFT.set(raft);
 
     run_app(raft).await; // This is subjective. Do it your own way.
                          // Just run your app, feeding Raft & client

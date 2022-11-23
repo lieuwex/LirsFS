@@ -9,14 +9,13 @@ use async_raft::{
     },
     Config, RaftNetwork,
 };
-use tarpc::context;
 use tokio::sync::Mutex;
 
-use crate::{client_req::AppClientRequest, service::ServiceClient};
+use crate::{client_req::AppClientRequest, connection::NodeConnection, message::Message};
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
 pub struct AppRaftNetwork {
-    nodes: HashMap<u64, Arc<Mutex<ServiceClient>>>,
+    nodes: HashMap<u64, Arc<Mutex<NodeConnection>>>,
 }
 
 impl AppRaftNetwork {
@@ -26,7 +25,7 @@ impl AppRaftNetwork {
         }
     }
 
-    fn assume_node(&self, node_id: u64) -> Result<Arc<Mutex<ServiceClient>>> {
+    fn assume_node(&self, node_id: u64) -> Result<Arc<Mutex<NodeConnection>>> {
         self.nodes
             .get(&node_id)
             .ok_or_else(|| anyhow!("no node {} known", node_id))
@@ -42,10 +41,8 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         target: u64,
         rpc: AppendEntriesRequest<AppClientRequest>,
     ) -> Result<AppendEntriesResponse> {
-        let node = self.assume_node(target)?;
-        let node = node.lock().await;
-
-        Ok(node.append_entries(context::current(), rpc).await?)
+        // ... snip ...
+        todo!();
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
@@ -54,10 +51,8 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         target: u64,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse> {
-        let node = self.assume_node(target)?;
-        let node = node.lock().await;
-
-        Ok(node.install_snapshot(context::current(), rpc).await?)
+        // ... snip ...
+        todo!();
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
@@ -65,6 +60,8 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         let node = self.assume_node(target)?;
         let node = node.lock().await;
 
-        Ok(node.vote(context::current(), rpc).await?)
+        node.write_message(&Message::Vote { request: rpc }).await?;
+
+        Ok(())
     }
 }

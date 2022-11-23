@@ -1,0 +1,40 @@
+use std::net::SocketAddr;
+
+use anyhow::Result;
+use tokio::{
+    io::{self, AsyncWriteExt},
+    net::TcpStream,
+};
+
+use crate::{message::Message, service::Service};
+
+pub struct NodeConnection {
+    stream: Option<TcpStream>,
+    addr: SocketAddr,
+}
+
+impl NodeConnection {
+    pub fn new(addr: SocketAddr) -> Self {
+        Self { stream: None, addr }
+    }
+
+    pub async fn get_socket<'a>(&'a mut self) -> io::Result<&mut TcpStream> {
+        if self.stream.is_some() {
+            // REVIEW: do check if stream is writable?
+
+            // SAFETY: we just checked self.stream is Some.
+            let res = unsafe { self.stream.as_mut().unwrap_unchecked() };
+            return Ok(res);
+        }
+
+        let s = TcpStream::connect(self.addr).await?;
+        Ok(self.stream.get_or_insert(s))
+    }
+
+    pub async fn write_message(&mut self, message: &Message) -> Result<()> {
+        let bytes = rmp_serde::to_vec(message)?;
+        let socket = self.get_socket().await?;
+        socket.write_all(&bytes);
+        Ok(())
+    }
+}
