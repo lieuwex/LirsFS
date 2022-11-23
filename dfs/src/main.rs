@@ -9,7 +9,9 @@ use storage::AppRaftStorage;
 
 mod client_req;
 mod client_res;
+mod connection;
 mod network;
+mod operation;
 mod server;
 mod service;
 mod storage;
