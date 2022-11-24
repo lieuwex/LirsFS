@@ -25,7 +25,7 @@ impl NodeConnection {
             return Ok(res);
         }
 
-        let c = connect(self.addr, || MessagePack::default()).await?;
+        let c = connect(self.addr, MessagePack::default).await?;
         let c = ServiceClient::new(Config::default(), c).spawn();
         Ok(self.client.get_or_insert(c))
     }
