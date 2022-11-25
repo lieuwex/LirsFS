@@ -1,8 +1,0 @@
-use async_raft::raft::VoteRequest;
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Debug)]
-pub enum Message {
-    Vote { request: VoteRequest },
-}
