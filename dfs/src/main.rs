@@ -1,14 +1,15 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
 use network::AppRaftNetwork;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 use storage::AppRaftStorage;
 
 mod client_req;
 mod client_res;
+mod config;
 mod connection;
 mod network;
 mod operation;
@@ -19,6 +20,10 @@ mod storage;
 type AppRaft = Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>;
 
 pub static RAFT: OnceCell<AppRaft> = OnceCell::new();
+pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
+    let config = env::args().nth(1).expect("Provide a config file");
+    toml::from_str(&config).expect("Couldn't parse config file")
+});
 
 async fn run_app(raft: AppRaft) -> ! {
     loop {}
@@ -29,7 +34,7 @@ async fn main() {
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let config = Arc::new(
-        Config::build("primary-raft-group".into())
+        Config::build(CONFIG.cluster_name)
             .validate()
             .expect("Failed to build Raft config"),
     );
