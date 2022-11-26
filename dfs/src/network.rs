@@ -9,36 +9,41 @@ use async_raft::{
     },
     Config, RaftNetwork,
 };
+use futures_util::stream::{iter, StreamExt};
 use tarpc::context;
-use tokio::sync::Mutex;
 
-use crate::{client_req::AppClientRequest, connection::NodeConnection, service::ServiceClient};
+use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
 pub struct AppRaftNetwork {
-    nodes: HashMap<u64, Arc<Mutex<NodeConnection>>>,
+    nodes: HashMap<u64, NodeConnection>,
 }
 
 impl AppRaftNetwork {
-    pub fn new(config: Arc<Config>) -> Self {
-        Self {
-            nodes: HashMap::new(),
-        }
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
+        let nodes: Vec<Result<_>> =
+            iter(CONFIG.nodes.iter().enumerate())
+                .then(|(i, addr)| async move {
+                    anyhow::Ok((i as u64, NodeConnection::new(*addr).await?))
+                })
+                .collect()
+                .await;
+        let nodes: Result<HashMap<_, _>> = nodes.into_iter().collect();
+
+        Ok(Self { nodes: nodes? })
     }
 
-    fn assume_node(&self, node_id: u64) -> Result<Arc<Mutex<NodeConnection>>> {
+    pub fn assume_node(&self, node_id: u64) -> Result<&NodeConnection> {
         self.nodes
             .get(&node_id)
             .ok_or_else(|| anyhow!("no node {} known", node_id))
-            .cloned()
     }
 }
 
 macro_rules! assume_client {
     ($network:expr, $node_id:expr) => {{
         let node = $network.assume_node($node_id)?;
-        let node = node.lock_owned().await;
-        node.get_client().await?
+        node.get_client().await
     }};
 }
 

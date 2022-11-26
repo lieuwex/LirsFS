@@ -12,4 +12,6 @@ pub trait Service {
     ) -> AppendEntriesResponse;
     async fn install_snapshot(request: InstallSnapshotRequest) -> InstallSnapshotResponse;
     async fn vote(request: VoteRequest) -> VoteResponse;
+
+    async fn ping();
 }
