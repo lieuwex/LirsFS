@@ -21,13 +21,10 @@ pub struct AppRaftNetwork {
 
 impl AppRaftNetwork {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let nodes: Vec<Result<_>> =
-            iter(CONFIG.nodes.iter().enumerate())
-                .then(|(i, addr)| async move {
-                    anyhow::Ok((i as u64, NodeConnection::new(*addr).await?))
-                })
-                .collect()
-                .await;
+        let nodes: Vec<Result<_>> = iter(&CONFIG.nodes)
+            .then(|n| async move { anyhow::Ok((n.id, NodeConnection::new(n.addr).await?)) })
+            .collect()
+            .await;
         let nodes: Result<HashMap<_, _>> = nodes.into_iter().collect();
 
         Ok(Self { nodes: nodes? })
