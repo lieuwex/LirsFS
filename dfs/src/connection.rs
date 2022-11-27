@@ -1,6 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Result;
+use async_raft::NodeId;
 use tarpc::{client::Config, context, serde_transport::tcp};
 use tokio::{
     sync::{Mutex, OwnedMutexGuard},
@@ -25,7 +26,7 @@ async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
 }
 
 impl NodeConnection {
-    pub async fn new(addr: SocketAddr) -> Result<Self> {
+    pub async fn new(node_id: NodeId, addr: SocketAddr) -> Result<Self> {
         let client = connect(addr).await?;
         let client = Arc::new(Mutex::new(client));
         let client_cpy = client.clone();
@@ -37,15 +38,28 @@ impl NodeConnection {
             interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
             interval.reset(); // don't fire immediately
 
+            let mut missed_count = 0usize;
             loop {
                 interval.tick().await;
 
                 {
                     let mut client = client.lock().await;
                     if let Err(e) = client.ping(context::current()).await {
-                        eprintln!("error while pinging to {:?}: {:?}", addr, e);
-                        *client = connect(addr).await.unwrap();
+                        missed_count += 1;
+                        eprintln!(
+                            "error while pinging to {:?} (missed count {}/{}): {:?}",
+                            addr,
+                            missed_count + 1,
+                            CONFIG.max_missed_pings,
+                            e
+                        );
+
+                        if missed_count > CONFIG.max_missed_pings {
+                            eprintln!("reconnecting {} to {}", node_id, addr);
+                            *client = connect(addr).await.unwrap();
+                        }
                     }
+                    missed_count = 0;
                 }
             }
         });
