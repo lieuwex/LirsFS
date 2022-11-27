@@ -19,6 +19,7 @@ mod client_req;
 mod client_res;
 mod config;
 mod connection;
+mod file_registry;
 mod network;
 mod operation;
 mod server;
