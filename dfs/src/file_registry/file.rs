@@ -1,10 +1,11 @@
 //! The File table holds information about every file in the LirsFs
 
+use serde::{Deserialize, Serialize};
 use sqlx::query;
 
-use super::schema::Schema;
+use super::schema::{Schema, SqlxQuery};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 
 pub struct File {
     pub file_id: i32,
@@ -19,14 +20,13 @@ pub struct File {
 impl Schema for File {
     const TABLENAME: &'static str = "files";
 
-    fn create_table_query(
-    ) -> query::Query<'static, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'static>> {
+    fn create_table_query() -> SqlxQuery {
         query(
             "
             CREATE TABLE IF NOT EXISTS ? ( 
-                id integer primary key, 
-                path text not null, 
-                hash blob not null, 
+                id                 integer primary key, 
+                path               text not null, 
+                hash               blob not null, 
                 replication_factor integer not null 
             );  
             ",
