@@ -1,27 +1,30 @@
 //! The Node table keeps track of every compute node in the LirsFs
 //!
-use sea_orm::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "node")]
-pub struct Model {
-    #[sea_orm(primary_key)]
+use sqlx::query;
+
+use super::schema::Schema;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
     pub node_id: i32,
 
     pub name: String,
 }
 
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+impl Schema for Node {
+    const TABLENAME: &'static str = "nodes";
 
-impl Related<super::file::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::keepers::Relation::File.def()
-    }
-
-    fn via() -> Option<RelationDef> {
-        Some(super::keepers::Relation::Node.def().rev())
+    fn create_table_query(
+    ) -> sqlx::query::Query<'static, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'static>> {
+        query(
+            "
+            CREATE TABLE IF NOT EXISTS ? (
+                id integer primary key,
+                name text not null,
+            );
+        ",
+        )
+        .bind(Self::TABLENAME)
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}

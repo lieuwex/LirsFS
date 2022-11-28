@@ -1,6 +1,7 @@
 pub mod file;
 pub mod keepers;
 pub mod node;
+pub mod schema;
 
 // pub struct FileRegistry {
 //     db: DatabaseConnection,

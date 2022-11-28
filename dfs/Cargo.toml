@@ -22,6 +22,8 @@ tokio-serde = { version = "0.8", features = ["messagepack"] }
 #rmp-serde = "1.1"
 
 once_cell = "1.16.0"
+sqlx = { version = "0.6.2", features = [ "runtime-tokio-native-tls", "sqlite", "macros" ] }
 
-sea-orm = "0.10.4"
+
+[features]
 

@@ -1,11 +1,12 @@
 //! The File table holds information about every file in the LirsFs
 
-use sea_orm::prelude::*;
+use sqlx::query;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "file")]
-pub struct Model {
-    #[sea_orm(primary_key)]
+use super::schema::Schema;
+
+#[derive(Clone, Debug, PartialEq)]
+
+pub struct File {
     pub file_id: i32,
 
     pub file_path: String,
@@ -15,17 +16,21 @@ pub struct Model {
     pub replication_factor: u32,
 }
 
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+impl Schema for File {
+    const TABLENAME: &'static str = "files";
 
-impl Related<super::node::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::keepers::Relation::Node.def()
-    }
-
-    fn via() -> Option<RelationDef> {
-        Some(super::keepers::Relation::File.def().rev())
+    fn create_table_query(
+    ) -> query::Query<'static, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'static>> {
+        query(
+            "
+            CREATE TABLE IF NOT EXISTS ? ( 
+                id integer primary key, 
+                path text not null, 
+                hash blob not null, 
+                replication_factor integer not null 
+            );  
+            ",
+        )
+        .bind(Self::TABLENAME)
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}
