@@ -20,6 +20,7 @@ mod client_res;
 mod config;
 mod connection;
 mod file_registry;
+mod migrations;
 mod network;
 mod operation;
 mod server;
@@ -41,6 +42,8 @@ async fn run_app(raft: AppRaft) -> ! {
 
 #[tokio::main]
 async fn main() {
+    todo!("here we have to write some code to connect to the database and run the migrations");
+
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let config = Arc::new(
