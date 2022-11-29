@@ -23,12 +23,12 @@ impl Schema for File {
     fn create_table_query() -> SqlxQuery {
         query(
             "
-            CREATE TABLE IF NOT EXISTS ? ( 
-                id                 integer primary key, 
-                path               text not null, 
-                hash               blob not null, 
-                replication_factor integer not null 
-            );  
+            CREATE TABLE IF NOT EXISTS ? (
+                id                 integer primary key,
+                path               text not null,
+                hash               blob not null,
+                replication_factor integer not null
+            );
             ",
         )
         .bind(Self::TABLENAME)
