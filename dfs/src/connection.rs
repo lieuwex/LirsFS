@@ -12,6 +12,7 @@ use tokio_serde::formats::MessagePack;
 
 use crate::{service::ServiceClient, CONFIG};
 
+#[derive(Debug)]
 pub struct NodeConnection {
     client: Arc<Mutex<ServiceClient>>,
     addr: SocketAddr,

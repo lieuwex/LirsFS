@@ -15,6 +15,7 @@ use tarpc::context;
 use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
+#[derive(Debug)]
 pub struct AppRaftNetwork {
     nodes: HashMap<u64, NodeConnection>,
 }

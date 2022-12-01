@@ -1,11 +1,10 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
 use async_raft::{Config, Raft};
-use client_req::AppClientRequest;
-use client_res::AppClientResponse;
 use futures_util::StreamExt;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
+use raft_app::RaftApp;
 use server::Server;
 use service::Service;
 use storage::AppRaftStorage;
@@ -21,20 +20,19 @@ mod config;
 mod connection;
 mod network;
 mod operation;
+mod raft_app;
 mod server;
 mod service;
 mod storage;
 
-type AppRaft = Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>;
-
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
-pub static RAFT: OnceCell<AppRaft> = OnceCell::new();
+pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
 pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = env::args().nth(1).expect("Provide a config file");
     toml::from_str(&config).expect("Couldn't parse config file")
 });
 
-async fn run_app(raft: AppRaft) -> ! {
+async fn run_app(raft: &RaftApp) -> ! {
     loop {}
 }
 
@@ -43,7 +41,7 @@ async fn main() {
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let config = Arc::new(
-        Config::build(CONFIG.cluster_name)
+        Config::build(CONFIG.cluster_name.clone())
             .validate()
             .expect("Failed to build Raft config"),
     );
@@ -82,12 +80,12 @@ async fn main() {
     // Create a new Raft node, which spawns an async task which
     // runs the Raft core logic. Keep this Raft instance around
     // for calling API methods based on events in your app.
-    let raft = Raft::new(node_id, config, network.clone(), storage);
+    let raft = RaftApp::new(Raft::new(node_id, config, network.clone(), storage));
 
-    NETWORK.set(network);
-    RAFT.set(raft);
+    NETWORK.set(network).unwrap();
+    RAFT.set(raft).unwrap();
 
-    run_app(raft).await; // This is subjective. Do it your own way.
-                         // Just run your app, feeding Raft & client
-                         // RPCs into the Raft node as they arrive.
+    run_app(RAFT.get().unwrap()).await; // This is subjective. Do it your own way.
+                                        // Just run your app, feeding Raft & client
+                                        // RPCs into the Raft node as they arrive.
 }
