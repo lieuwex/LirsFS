@@ -1,10 +1,8 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
-use crate::file_registry::schema::create_all_tables;
+use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
-use client_req::AppClientRequest;
-use client_res::AppClientResponse;
-use database::Database;
+use db::Database;
 use futures_util::StreamExt;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
@@ -23,8 +21,7 @@ mod client_req;
 mod client_res;
 mod config;
 mod connection;
-mod database;
-mod file_registry;
+mod db;
 // mod migrations; <-- Add back later
 mod network;
 mod operation;
@@ -58,7 +55,8 @@ async fn main() {
         pool: SqlitePool::connect(&CONFIG.file_registry)
             .await
             .expect("Error connecting to file registry"),
-    });
+    })
+    .unwrap();
 
     // TODO: put behind some CLI flag?
     create_all_tables(&DB.get().unwrap().pool).await;

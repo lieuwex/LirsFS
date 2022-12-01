@@ -5,7 +5,7 @@ use sqlx::query;
 
 use super::schema::{Schema, SqlxQuery};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 
 pub struct File {
     pub file_id: i32,

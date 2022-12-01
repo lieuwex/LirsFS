@@ -6,7 +6,7 @@ use sqlx::query;
 
 use super::schema::{Schema, SqlxQuery};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {
     pub node_id: i32,
 

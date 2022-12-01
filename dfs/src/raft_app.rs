@@ -25,6 +25,6 @@ impl Debug for RaftApp {
         let leader = futures::executor::block_on(self.app.current_leader())
             .map_or("<no leader>".to_string(), |leader_id| leader_id.to_string());
 
-        write!(f, "Raft app {:#?}", 1)
+        write!(f, "Raft app - {:#?}", leader)
     }
 }

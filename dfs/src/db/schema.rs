@@ -29,7 +29,7 @@ pub async fn create_all_tables<'a, E>(exec: &'a E)
 where
     &'a E: SqliteExecutor<'a>,
 {
-    create_table::<File, _>(&exec).await;
-    create_table::<Node, _>(&exec).await;
-    create_table::<Keepers, _>(&exec).await;
+    create_table::<File, _>(exec).await;
+    create_table::<Node, _>(exec).await;
+    create_table::<Keepers, _>(exec).await;
 }
