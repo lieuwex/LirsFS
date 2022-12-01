@@ -1,7 +1,5 @@
-use std::{fmt::Display, sync::Arc};
-
 use crate::{client_req::AppClientRequest, client_res::AppClientResponse};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_raft::{
     async_trait::async_trait,
     raft::{Entry, MembershipConfig},
@@ -9,6 +7,7 @@ use async_raft::{
     storage::{CurrentSnapshotData, HardState},
     Config, NodeId, RaftStorage,
 };
+use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -42,9 +41,6 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
         todo!()
-        MembershipConfig {
-            
-        }
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {

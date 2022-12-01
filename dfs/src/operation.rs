@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 
+/// Mutating operations that the Raft cluster can perform on the application's state machine (the file registry).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Operation {
     /// Test operation that prints something to stdout on the receiver node.

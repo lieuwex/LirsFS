@@ -16,7 +16,6 @@ use crate::{service::ServiceClient, CONFIG};
 pub struct NodeConnection {
     client: Arc<Mutex<ServiceClient>>,
     addr: SocketAddr,
-
     pinger: JoinHandle<()>,
 }
 
