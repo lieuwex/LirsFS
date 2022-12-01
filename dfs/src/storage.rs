@@ -1,4 +1,4 @@
-use crate::{client_req::AppClientRequest, client_res::AppClientResponse};
+use crate::{client_req::AppClientRequest, client_res::AppClientResponse, CONFIG};
 use anyhow::Result;
 use async_raft::{
     async_trait::async_trait,
@@ -9,6 +9,10 @@ use async_raft::{
 };
 use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
+use tokio::{
+    fs::{File, OpenOptions},
+    io::AsyncWriteExt,
+};
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -48,7 +52,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
-        todo!()
+        let path = &CONFIG.hardstate_file;
+        let mut file = OpenOptions::new().write(true).open(path).await?;
+        file.write_all(&bincode::serialize(hs)?).await?;
+        file.flush().await?;
+        Ok(())
     }
 
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<AppClientRequest>>> {

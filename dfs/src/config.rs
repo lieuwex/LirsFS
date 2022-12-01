@@ -21,6 +21,15 @@ fn default_file_registry() -> String {
     "sqlite:///local/ddps2221/fileregistry.db".to_owned()
 }
 
+#[cfg(debug_assertions)]
+fn default_hardstate_file() -> String {
+    "/tmp/raft_hardstate".to_owned()
+}
+
+#[cfg(not(debug_assertions))]
+fn default_hardstate_file() -> String {
+    "/local/ddps2221/raft_hardstate".to_owned()
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -39,4 +48,6 @@ pub struct Config {
     pub max_missed_pings: usize,
     #[serde(default = "default_file_registry")]
     pub file_registry: String,
+    #[serde(default = "default_hardstate_file")]
+    pub hardstate_file: String,
 }
