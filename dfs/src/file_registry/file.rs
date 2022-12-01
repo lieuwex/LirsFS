@@ -21,16 +21,22 @@ impl Schema for File {
     const TABLENAME: &'static str = "files";
 
     fn create_table_query() -> SqlxQuery {
-        query(
-            "
-            CREATE TABLE IF NOT EXISTS ? (
-                id                 integer primary key,
-                path               text not null,
-                hash               blob not null,
-                replication_factor integer not null
-            );
-            ",
-        )
-        .bind(Self::TABLENAME)
+        query(include_str!("../../sql/create_files.sql"))
     }
 }
+
+// impl File {
+//     pub async fn get_by_path(path: String, conn: &mut SqlitePool) -> Self {
+//         let x = query!(
+//             "
+//             SELECT id, path, hash, replication_factor
+//             FROM files
+//             WHERE path = ?;
+//             ",
+//             path
+//         );
+//         x
+//         // .fetch_one(conn)
+//         // .await;
+//     }
+// }

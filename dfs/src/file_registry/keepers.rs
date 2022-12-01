@@ -11,21 +11,11 @@ pub struct Keepers {
     pub file_id: i32,
     pub node_id: i32,
 }
+
 impl Schema for Keepers {
     const TABLENAME: &'static str = "keepers";
 
     fn create_table_query() -> SqlxQuery {
-        query(
-            "
-            CREATE TABLE IF NOT EXISTS ? (
-                id          integer primary key,
-                file_id     integer
-                node_id     integer
-                FOREIGN KEY(node_id) REFERENCES node(id)
-                FOREIGN KEY(file_id) REFERENCES file(id)
-            );
-        ",
-        )
-        .bind(Self::TABLENAME)
+        query(include_str!("../../sql/create_keepers.sql"))
     }
 }

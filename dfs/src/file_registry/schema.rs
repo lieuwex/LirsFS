@@ -1,3 +1,4 @@
+use super::{file::File, keepers::Keepers, node::Node};
 use async_raft::async_trait::async_trait;
 use sqlx::{sqlite::SqliteQueryResult, SqliteExecutor};
 
@@ -13,13 +14,22 @@ pub trait Schema {
     fn create_table_query() -> SqlxQuery;
 }
 
-async fn create_table<'a, T, E>(exec: E) -> SqliteQueryResult
+async fn create_table<'a, T, E>(exec: &'a E) -> SqliteQueryResult
 where
     T: Schema,
-    E: SqliteExecutor<'a>,
+    &'a E: SqliteExecutor<'a>,
 {
     T::create_table_query()
         .execute(exec)
         .await
         .unwrap_or_else(|err| panic!("Error creating table `{}`: {}", T::TABLENAME, err))
+}
+
+pub async fn create_all_tables<'a, E>(exec: &'a E)
+where
+    &'a E: SqliteExecutor<'a>,
+{
+    create_table::<File, _>(&exec).await;
+    create_table::<Node, _>(&exec).await;
+    create_table::<Keepers, _>(&exec).await;
 }

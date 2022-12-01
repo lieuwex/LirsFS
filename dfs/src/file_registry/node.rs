@@ -17,14 +17,6 @@ impl Schema for Node {
     const TABLENAME: &'static str = "nodes";
 
     fn create_table_query() -> SqlxQuery {
-        query(
-            "
-            CREATE TABLE IF NOT EXISTS ? (
-                id      integer primary key,
-                name    text not null,
-            );
-        ",
-        )
-        .bind(Self::TABLENAME)
+        query(include_str!("../../sql/create_nodes.sql"))
     }
 }
