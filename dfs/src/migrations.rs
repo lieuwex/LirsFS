@@ -1,6 +1,6 @@
 use crate::DB;
-
 use anyhow::Result;
+use sqlx::query;
 
 macro_rules! version_check {
     ($version:expr) => {{
@@ -24,7 +24,7 @@ macro_rules! version_check {
 async fn get_version() -> Result<i64> {
     let db = DB.get().unwrap();
 
-    let res = sqlx::query!("select value from meta where key = 'schema_version'")
+    let res = query!("select value from meta where key = 'schema_version'")
         .fetch_one(&db.pool)
         .await?
         .value

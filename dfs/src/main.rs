@@ -4,6 +4,7 @@ use crate::file_registry::schema::create_all_tables;
 use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
+use database::Database;
 use futures_util::StreamExt;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
@@ -21,8 +22,9 @@ mod client_req;
 mod client_res;
 mod config;
 mod connection;
+mod database;
 mod file_registry;
-mod migrations;
+// mod migrations; <-- Add back later
 mod network;
 mod operation;
 mod server;
@@ -37,6 +39,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = env::args().nth(1).expect("Provide a config file");
     toml::from_str(&config).expect("Couldn't parse config file")
 });
+pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: AppRaft) -> ! {
     loop {}
@@ -44,8 +47,6 @@ async fn run_app(raft: AppRaft) -> ! {
 
 #[tokio::main]
 async fn main() {
-    todo!("here we have to write some code to connect to the database and run the migrations");
-
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
@@ -53,13 +54,14 @@ async fn main() {
             .validate()
             .expect("Failed to build Raft config"),
     );
-
-    let pool = SqlitePool::connect(&CONFIG.file_registry)
-        .await
-        .expect("Error connecting to file registry");
+    DB.set(Database {
+        pool: SqlitePool::connect(&CONFIG.file_registry)
+            .await
+            .expect("Error connecting to file registry"),
+    });
 
     // TODO: put behind some CLI flag?
-    create_all_tables(&pool).await;
+    create_all_tables(&DB.get().unwrap().pool).await;
 
     tokio::spawn(async {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
