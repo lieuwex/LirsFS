@@ -1,7 +1,6 @@
-use std::{fmt::Display, sync::Arc};
-
 use crate::{client_req::AppClientRequest, client_res::AppClientResponse};
 use async_raft::{Config, NodeId, RaftStorage};
+use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
 
 #[derive(Error, Debug)]

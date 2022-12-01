@@ -12,6 +12,15 @@ const fn default_max_missed_pings() -> usize {
     2
 }
 
+#[cfg(debug_assertions)]
+const fn default_file_registry() -> String {
+    "sqlite:///tmp/db/dev.db".to_owned()
+}
+#[cfg(not(debug_assertions))]
+const fn default_file_registry() -> String {
+    "sqlite:///local/ddps2221/fileregistry.db".to_owned()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -28,4 +37,6 @@ pub struct Config {
     pub ping_interval: Duration,
     #[serde(default = "default_max_missed_pings")]
     pub max_missed_pings: usize,
+    #[serde(default = "default_file_registry")]
+    pub file_registry: String,
 }

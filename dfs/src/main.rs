@@ -1,13 +1,16 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
+use crate::file_registry::schema::create_all_tables;
 use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
+use database::Database;
 use futures_util::StreamExt;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use server::Server;
 use service::Service;
+use sqlx::SqlitePool;
 use storage::AppRaftStorage;
 use tarpc::{
     serde_transport::tcp::listen,
@@ -19,6 +22,9 @@ mod client_req;
 mod client_res;
 mod config;
 mod connection;
+mod database;
+mod file_registry;
+// mod migrations; <-- Add back later
 mod network;
 mod operation;
 mod server;
@@ -33,6 +39,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = env::args().nth(1).expect("Provide a config file");
     toml::from_str(&config).expect("Couldn't parse config file")
 });
+pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: AppRaft) -> ! {
     loop {}
@@ -42,11 +49,19 @@ async fn run_app(raft: AppRaft) -> ! {
 async fn main() {
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
-    let config = Arc::new(
+    let raft_config = Arc::new(
         Config::build(CONFIG.cluster_name)
             .validate()
             .expect("Failed to build Raft config"),
     );
+    DB.set(Database {
+        pool: SqlitePool::connect(&CONFIG.file_registry)
+            .await
+            .expect("Error connecting to file registry"),
+    });
+
+    // TODO: put behind some CLI flag?
+    create_all_tables(&DB.get().unwrap().pool).await;
 
     tokio::spawn(async {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
@@ -73,8 +88,8 @@ async fn main() {
             .await;
     });
 
-    let network = Arc::new(AppRaftNetwork::new(config.clone()).await.unwrap());
-    let storage = Arc::new(AppRaftStorage::new(config.clone()));
+    let network = Arc::new(AppRaftNetwork::new(raft_config.clone()).await.unwrap());
+    let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
 
     // Get our node's ID from stable storage.
     let node_id = storage.get_own_id().await;
@@ -82,7 +97,7 @@ async fn main() {
     // Create a new Raft node, which spawns an async task which
     // runs the Raft core logic. Keep this Raft instance around
     // for calling API methods based on events in your app.
-    let raft = Raft::new(node_id, config, network.clone(), storage);
+    let raft = Raft::new(node_id, raft_config, network.clone(), storage);
 
     NETWORK.set(network);
     RAFT.set(raft);
