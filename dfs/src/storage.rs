@@ -42,6 +42,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
         todo!()
+        MembershipConfig {
+            
+        }
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {
