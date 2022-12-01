@@ -1,22 +1,36 @@
 use std::path::PathBuf;
 
+use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 
-/// Operations that the Raft cluster can perform.
-/// Most of these update the [FileRegistry] in some way.
-///
-/// [Operation::Internal] is for operations requested by one internal node in the Raft cluster to another (e.g., transferring data between nodes)
-/// [Operation::External] is for operations requested by the user of LirsFS (e.g., creating a file in the file system)
+/// Mutating operations that the Raft cluster can perform on the application's state machine (the file registry).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Operation {
-    Internal(InternalOp),
-    External(ExternalOp),
-}
+    /// Test operation that prints something to stdout on the receiver node.
+    Print { message: String },
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum InternalOp {}
+    /// Write a file to the destination
+    Write {
+        path: PathBuf,
+        replication_factor: usize,
+        sha512: u64,
+    },
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ExternalOp {
-    CreateFile { path: PathBuf },
+    /// Write stored on specific node
+    Store {
+        path: PathBuf,
+        sha512: u64,
+        node_id: NodeId,
+    },
+    /// Loss of storage due to node failure
+    StorageLoss {
+        path: PathBuf,
+        sha512: u64,
+        node_id: NodeId,
+    },
+
+    /// Node joined the network
+    NodeJoin { node_id: NodeId },
+    /// Node leaved the network
+    NodeLeave { node_id: NodeId },
 }
