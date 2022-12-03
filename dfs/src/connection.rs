@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_raft::NodeId;
 use tarpc::{client::Config, context, serde_transport::tcp};
 use tokio::{
-    sync::{Mutex, OwnedMutexGuard},
+    sync::{Mutex, OwnedMutexGuard, TryLockError},
     task::JoinHandle,
     time,
 };
@@ -33,6 +33,8 @@ impl NodeConnection {
 
         let pinger = tokio::spawn(async move {
             // TODO: add some randomization so that not all nodes fire pings all at the same time.
+            // TODO: improve error handling when failing to connect after ping failure, this his
+            // highly likely to fail.
 
             let mut interval = time::interval(CONFIG.ping_interval);
             interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
@@ -44,22 +46,25 @@ impl NodeConnection {
 
                 {
                     let mut client = client.lock().await;
-                    if let Err(e) = client.ping(context::current()).await {
-                        missed_count += 1;
-                        eprintln!(
-                            "error while pinging to {:?} (missed count {}/{}): {:?}",
-                            addr,
-                            missed_count + 1,
-                            CONFIG.max_missed_pings,
-                            e
-                        );
+                    match client.ping(context::current()).await {
+                        Err(e) => {
+                            missed_count += 1;
+                            eprintln!(
+                                "error while pinging to {:?} (missed count {}/{}): {:?}",
+                                addr,
+                                missed_count + 1,
+                                CONFIG.max_missed_pings,
+                                e
+                            );
 
-                        if missed_count > CONFIG.max_missed_pings {
-                            eprintln!("reconnecting {} to {}", node_id, addr);
-                            *client = connect(addr).await.unwrap();
+                            if missed_count > CONFIG.max_missed_pings {
+                                eprintln!("reconnecting {} to {}", node_id, addr);
+                                *client = connect(addr).await.unwrap();
+                                missed_count = 0;
+                            }
                         }
+                        Ok(()) => missed_count = 0,
                     }
-                    missed_count = 0;
                 }
             }
         });
@@ -74,5 +79,9 @@ impl NodeConnection {
 
     pub async fn get_client(&self) -> OwnedMutexGuard<ServiceClient> {
         self.client.clone().lock_owned().await
+    }
+
+    pub fn try_get_client(&self) -> Result<OwnedMutexGuard<ServiceClient>, TryLockError> {
+        self.client.clone().try_lock_owned()
     }
 }
