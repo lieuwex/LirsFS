@@ -139,3 +139,9 @@ impl NodeConnection {
         }
     }
 }
+
+impl Drop for NodeConnection {
+    fn drop(&mut self) {
+        self.pinger.abort()
+    }
+}
