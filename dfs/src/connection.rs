@@ -62,7 +62,7 @@ async fn pinger(
                     Ok(c) => c,
                     Err(e) => {
                         eprintln!("error while connecting, retrying in 500ms: {:?}", e);
-                        time::sleep(Duration::from_millis(500)).await;
+                        time::sleep(CONFIG.reconnect_try_interval_ms).await;
                         continue;
                     }
                 };

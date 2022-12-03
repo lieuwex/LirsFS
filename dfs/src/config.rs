@@ -21,6 +21,10 @@ const fn default_max_missed_pings() -> usize {
     2
 }
 
+const fn default_reconnect_try_interval() -> Duration {
+    Duration::from_millis(500)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -40,4 +44,6 @@ pub struct Config {
     pub ping_interval: Duration,
     #[serde(default = "default_max_missed_pings")]
     pub max_missed_pings: usize,
+    #[serde(default = "default_reconnect_try_interval")]
+    pub reconnect_try_interval_ms: Duration,
 }
