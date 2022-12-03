@@ -1,3 +1,5 @@
+use crate::DB;
+
 use super::{file::File, keepers::Keepers, node::Node};
 use async_raft::async_trait::async_trait;
 use sqlx::{sqlite::SqliteQueryResult, SqliteExecutor};
@@ -32,4 +34,9 @@ where
     create_table::<File, _>(exec).await;
     create_table::<Node, _>(exec).await;
     create_table::<Keepers, _>(exec).await;
+}
+
+/// Return the global instance of the SQLite database pool
+pub fn db() -> impl SqliteExecutor<'static> {
+    &DB.get().unwrap().pool
 }

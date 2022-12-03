@@ -38,6 +38,7 @@ pub struct Node {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub node_id: NodeId,
     pub cluster_name: String,
     pub nodes: Vec<Node>,
     pub listen_port: usize,

@@ -1,4 +1,6 @@
-use crate::{client_req::AppClientRequest, client_res::AppClientResponse, CONFIG};
+use crate::{
+    client_req::AppClientRequest, client_res::AppClientResponse, db::raftlog::RaftLog, CONFIG,
+};
 use anyhow::Result;
 use async_raft::{
     async_trait::async_trait,
@@ -11,7 +13,7 @@ use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
 use tokio::{
     fs::{File, OpenOptions},
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
 };
 
 #[derive(Error, Debug)]
@@ -36,6 +38,15 @@ impl AppRaftStorage {
     pub async fn get_own_id(&self) -> NodeId {
         0 as NodeId
     }
+
+    async fn read_hard_state(&self) -> Result<Option<HardState>> {
+        let path = &CONFIG.hardstate_file;
+        let mut file = File::open(path).await?;
+        let mut buff: Vec<u8> = vec![];
+        file.read_exact(&mut buff).await?;
+        let hardstate = bincode::deserialize(&buff)?;
+        Ok(hardstate)
+    }
 }
 
 #[async_trait]
@@ -48,7 +59,26 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {
-        todo!()
+        let hard_state = match self.read_hard_state().await? {
+            Some(hs) => hs,
+            None => {
+                // This Raft node is pristine, return an empty initial config
+                let id = CONFIG.node_id;
+                return Ok(InitialState::new_initial(id));
+            }
+        };
+        let membership = self.get_membership_config().await?;
+
+        let state = InitialState {
+            hard_state,
+            membership,
+            // TODO: figure these out from our saved raft log
+            last_applied_log: todo!(),
+            last_log_index: todo!(),
+            last_log_term: todo!(),
+        };
+
+        Ok(state)
     }
 
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
@@ -64,7 +94,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
-        todo!()
+        let start = start as u32;
+        match stop {
+            Some(stop) => RaftLog::delete_range(start, stop as u32).await,
+            None => RaftLog::delete_from(start).await,
+        };
+        Ok(())
     }
 
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
