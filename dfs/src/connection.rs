@@ -2,9 +2,16 @@ use std::{net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_raft::NodeId;
-use tarpc::{client::Config, context, serde_transport::tcp};
+use tarpc::{
+    client::{Config, RpcError},
+    context,
+    serde_transport::tcp,
+};
 use tokio::{
-    sync::{watch, OwnedRwLockReadGuard, RwLock},
+    sync::{
+        watch::{self, Ref},
+        OwnedRwLockReadGuard, RwLock,
+    },
     task::JoinHandle,
     time,
 };
@@ -12,8 +19,15 @@ use tokio_serde::formats::MessagePack;
 
 use crate::{service::ServiceClient, CONFIG};
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConnectionState {
+    Ready,
+    Connecting,
+    Reconnecting { failure_reason: RpcError },
+}
+
 pub struct NodeConnection {
-    client_ready: watch::Receiver<bool>,
+    client_state: watch::Receiver<ConnectionState>,
     client: Arc<RwLock<Option<ServiceClient>>>,
 
     pinger: JoinHandle<()>,
@@ -28,7 +42,7 @@ async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
 async fn pinger(
     node_id: NodeId,
     client: Arc<RwLock<Option<ServiceClient>>>,
-    ready: watch::Sender<bool>,
+    ready: watch::Sender<ConnectionState>,
     addr: SocketAddr,
 ) -> ! {
     // TODO: add some randomization so that not all nodes fire pings all at the same time.
@@ -55,7 +69,7 @@ async fn pinger(
 
                 missed_count = 0;
                 *lock = Some(c);
-                ready.send_replace(true);
+                ready.send_replace(ConnectionState::Ready);
                 break lock.deref().as_ref().unwrap();
             },
             Some(c) => c,
@@ -75,7 +89,7 @@ async fn pinger(
                 if missed_count > CONFIG.max_missed_pings {
                     eprintln!("reconnecting {} to {}", node_id, addr);
                     *lock = None;
-                    ready.send_replace(false);
+                    ready.send_replace(ConnectionState::Reconnecting { failure_reason: e });
                 }
             }
             Ok(()) => {
@@ -88,7 +102,7 @@ async fn pinger(
 impl NodeConnection {
     /// Create a new connection, this will be initialised directly in the background.
     pub async fn new(node_id: NodeId, addr: SocketAddr) -> Self {
-        let (ready_tx, ready_rx) = watch::channel(false);
+        let (ready_tx, ready_rx) = watch::channel(ConnectionState::Connecting);
 
         let client = Arc::new(RwLock::new(None));
         let client_cpy = client.clone();
@@ -96,7 +110,7 @@ impl NodeConnection {
         let pinger = tokio::spawn(async move { pinger(node_id, client_cpy, ready_tx, addr).await });
 
         Self {
-            client_ready: ready_rx,
+            client_state: ready_rx,
             client,
 
             pinger,
@@ -120,20 +134,20 @@ impl NodeConnection {
     }
 
     /// Returns whether or not the client is _currently_ ready to use.
-    pub fn is_client_ready(&self) -> bool {
-        *self.client_ready.borrow()
+    pub fn get_client_state<'a>(&'a self) -> Ref<'a, ConnectionState> {
+        self.client_state.borrow()
     }
 
     /// Waits until the client is marked as ready to use.
     pub async fn wait_is_ready(&self) {
-        let mut rx = self.client_ready.clone();
-        if *rx.borrow_and_update() {
+        let mut rx = self.client_state.clone();
+        if *rx.borrow_and_update() == ConnectionState::Ready {
             return;
         }
 
         loop {
             rx.changed().await.unwrap();
-            if *rx.borrow() {
+            if *rx.borrow() == ConnectionState::Ready {
                 return;
             }
         }
