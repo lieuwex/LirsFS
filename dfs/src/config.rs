@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::net::SocketAddr;
 
 use async_raft::NodeId;
@@ -13,12 +14,12 @@ const fn default_max_missed_pings() -> usize {
 }
 
 #[cfg(debug_assertions)]
-const fn default_file_registry() -> String {
-    "sqlite:///tmp/db/dev.db".to_owned()
+const fn default_file_registry() -> Cow<'static, str> {
+    Cow::Borrowed("sqlite:///tmp/db/dev.db")
 }
 #[cfg(not(debug_assertions))]
-const fn default_file_registry() -> String {
-    "sqlite:///local/ddps2221/fileregistry.db".to_owned()
+const fn default_file_registry() -> Cow<'static, str> {
+    Cow::Borrowed("sqlite:///local/ddps2221/fileregistry.db")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,5 +39,5 @@ pub struct Config {
     #[serde(default = "default_max_missed_pings")]
     pub max_missed_pings: usize,
     #[serde(default = "default_file_registry")]
-    pub file_registry: String,
+    pub file_registry: Cow<'static, str>,
 }
