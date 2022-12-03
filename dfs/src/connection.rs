@@ -41,9 +41,9 @@ async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
 
 async fn pinger(
     node_id: NodeId,
+    addr: SocketAddr,
     client: Arc<RwLock<Option<ServiceClient>>>,
     ready: watch::Sender<ConnectionState>,
-    addr: SocketAddr,
 ) -> ! {
     // TODO: add some randomization so that not all nodes fire pings all at the same time.
 
@@ -107,7 +107,7 @@ impl NodeConnection {
         let client = Arc::new(RwLock::new(None));
         let client_cpy = client.clone();
 
-        let pinger = tokio::spawn(async move { pinger(node_id, client_cpy, ready_tx, addr).await });
+        let pinger = tokio::spawn(async move { pinger(node_id, addr, client_cpy, ready_tx).await });
 
         Self {
             client_state: ready_rx,
@@ -122,14 +122,10 @@ impl NodeConnection {
         loop {
             self.wait_is_ready().await;
             let guard = self.client.clone().read_owned().await;
-            match guard.as_ref() {
-                None => continue,
-                Some(_) => {
-                    break OwnedRwLockReadGuard::map(guard, |l: &Option<ServiceClient>| {
-                        l.as_ref().unwrap()
-                    })
-                }
-            }
+            match OwnedRwLockReadGuard::try_map(guard, |l| l.as_ref()) {
+                Err(_) => continue,
+                Ok(r) => break r,
+            };
         }
     }
 
