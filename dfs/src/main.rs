@@ -88,7 +88,7 @@ async fn main() {
             .await;
     });
 
-    let network = Arc::new(AppRaftNetwork::new(raft_config.clone()).await.unwrap());
+    let network = Arc::new(AppRaftNetwork::new(raft_config.clone()));
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
 
     // Get our node's ID from stable storage.

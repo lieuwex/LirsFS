@@ -10,7 +10,7 @@ use tarpc::{
 use tokio::{
     sync::{
         watch::{self, Ref},
-        OwnedRwLockReadGuard, RwLock,
+        RwLock, RwLockReadGuard,
     },
     task::JoinHandle,
     time,
@@ -101,7 +101,7 @@ async fn pinger(
 
 impl NodeConnection {
     /// Create a new connection, this will be initialised directly in the background.
-    pub async fn new(node_id: NodeId, addr: SocketAddr) -> Self {
+    pub fn new(node_id: NodeId, addr: SocketAddr) -> Self {
         let (ready_tx, ready_rx) = watch::channel(ConnectionState::Connecting);
 
         let client = Arc::new(RwLock::new(None));
@@ -118,11 +118,11 @@ impl NodeConnection {
     }
 
     /// Retrieve a read lock to the client, locks until the client is ready and obtainable.
-    pub async fn get_client(&self) -> OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient> {
+    pub async fn get_client(&self) -> RwLockReadGuard<'_, ServiceClient> {
         loop {
             self.wait_is_ready().await;
-            let guard = self.client.clone().read_owned().await;
-            match OwnedRwLockReadGuard::try_map(guard, |l| l.as_ref()) {
+            let guard = self.client.read().await;
+            match RwLockReadGuard::try_map(guard, |l| l.as_ref()) {
                 Err(_) => continue,
                 Ok(r) => break r,
             };
