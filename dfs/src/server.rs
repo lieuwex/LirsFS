@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     service::Service,
     webdav::{DirEntry, FileMetadata, SeekFrom},
-    RAFT,
+    FILE_SYSTEM, RAFT,
 };
 
 #[derive(Debug, Clone)]
@@ -43,28 +43,36 @@ impl Service for Server {
     async fn ping(self, _: Context) {}
 
     async fn open(self, _: Context, path: String) -> Uuid {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.open(path).await.unwrap()
     }
     async fn read_dir(self, _: Context, path: String) -> Vec<DirEntry> {
-        todo!()
+        let fs = FILE_SYSTEM.lock().await;
+        fs.read_dir(path).await.unwrap()
     }
     async fn metadata(self, _: Context, path: String) -> FileMetadata {
-        todo!()
+        let fs = FILE_SYSTEM.lock().await;
+        fs.metadata(path).await.unwrap()
     }
 
     async fn file_metadata(self, _: Context, file_id: Uuid) -> FileMetadata {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.file_metadata(file_id).await.unwrap()
     }
     async fn write_bytes(self, _: Context, file_id: Uuid, buf: Vec<u8>) -> () {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.write_bytes(file_id, &buf).await.unwrap()
     }
     async fn read_bytes(self, _: Context, file_id: Uuid, count: usize) -> Vec<u8> {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.read_bytes(file_id, count).await.unwrap()
     }
     async fn seek(self, _: Context, file_id: Uuid, pos: SeekFrom) -> u64 {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.seek(file_id, pos.into()).await.unwrap()
     }
     async fn flush(self, _: Context, file_id: Uuid) -> () {
-        todo!()
+        let mut fs = FILE_SYSTEM.lock().await;
+        fs.flush(file_id).await.unwrap()
     }
 }

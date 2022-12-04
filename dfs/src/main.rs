@@ -15,7 +15,7 @@ use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use sqlx::SqlitePool;
 use storage::AppRaftStorage;
-use tokio::task::JoinHandle;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 mod client_req;
 mod client_res;
@@ -42,7 +42,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = fs::read_to_string(config_path).unwrap();
     toml::from_str(&config).expect("Couldn't parse config file")
 });
-pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
+pub static FILE_SYSTEM: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem::new()));
 pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: AppRaft) -> ! {
