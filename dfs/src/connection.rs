@@ -15,7 +15,7 @@ use tokio::{
     task::JoinHandle,
     time,
 };
-use tokio_serde::formats::MessagePack;
+use tokio_serde::formats::Bincode;
 
 use crate::{service::ServiceClient, CONFIG};
 
@@ -34,7 +34,7 @@ pub struct NodeConnection {
 }
 
 async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
-    let c = tcp::connect(addr, MessagePack::default).await?;
+    let c = tcp::connect(addr, Bincode::default).await?;
     let c = ServiceClient::new(Config::default(), c).spawn();
     Ok(c)
 }
