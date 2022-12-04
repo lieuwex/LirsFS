@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{env, fs, net::SocketAddr, sync::Arc};
 
 use crate::file_registry::schema::create_all_tables;
 use async_raft::{Config, Raft};
@@ -29,7 +29,8 @@ type AppRaft = Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaft
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
 pub static RAFT: OnceCell<AppRaft> = OnceCell::new();
 pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
-    let config = env::args().nth(1).expect("Provide a config file");
+    let config_path = env::args().nth(1).expect("Provide a config file");
+    let config = fs::read_to_string(config_path).unwrap();
     toml::from_str(&config).expect("Couldn't parse config file")
 });
 pub static DB: OnceCell<Database> = OnceCell::new();
