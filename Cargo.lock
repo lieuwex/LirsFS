@@ -240,6 +240,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-raft",
+ "bytes",
  "futures-util",
  "hyper",
  "once_cell",
@@ -250,6 +251,7 @@ dependencies = [
  "tokio",
  "tokio-serde",
  "toml",
+ "uuid 1.2.2",
  "webdav-handler",
 ]
 
@@ -1949,6 +1951,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "uuid"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "422ee0de9031b5b948b97a8fc04e3aa35230001a722ddd27943e0be31564ce4c"
+dependencies = [
+ "getrandom 0.2.8",
+ "serde",
+]
+
+[[package]]
 name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2069,7 +2081,7 @@ dependencies = [
  "time",
  "tokio",
  "url",
- "uuid",
+ "uuid 0.8.2",
  "xml-rs",
  "xmltree",
 ]

@@ -28,7 +28,10 @@ sqlx = { version = "0.6.2", features = [ "runtime-tokio-native-tls", "sqlite", "
 webdav-handler = { version = "0.2.0", features = ["hyper"] }
 # hyper version will be set by webdav-handler.
 hyper = { version = "*", features = ["http1", "http2", "server", "runtime", "tcp", "stream"] }
+# bytes version will be set by webdav-handler.
+bytes = "*"
 
+uuid = { version = "1.2.2", features = ["v4", "serde"] }
 
 [features]
 
