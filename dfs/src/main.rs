@@ -10,6 +10,7 @@ use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
 use database::Database;
+use filesystem::FileSystem;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use sqlx::SqlitePool;
@@ -24,6 +25,7 @@ mod database;
 mod file_registry;
 mod rpc;
 // mod migrations; <-- Add back later
+mod filesystem;
 mod network;
 mod operation;
 mod server;
@@ -40,6 +42,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = fs::read_to_string(config_path).unwrap();
     toml::from_str(&config).expect("Couldn't parse config file")
 });
+pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
 pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: AppRaft) -> ! {
