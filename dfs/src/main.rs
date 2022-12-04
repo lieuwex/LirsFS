@@ -50,7 +50,7 @@ async fn main() {
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
-        Config::build(CONFIG.cluster_name)
+        Config::build(CONFIG.cluster_name.clone())
             .validate()
             .expect("Failed to build Raft config"),
     );
@@ -58,16 +58,15 @@ async fn main() {
         pool: SqlitePool::connect(&CONFIG.file_registry)
             .await
             .expect("Error connecting to file registry"),
-    });
+    })
+    .expect("DB already set");
 
     // TODO: put behind some CLI flag?
     create_all_tables(&DB.get().unwrap().pool).await;
 
     tokio::spawn(async {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
-
-        let mut listener = listen(listen_addr, MessagePack::default).await.unwrap();
-
+        let listener = listen(listen_addr, MessagePack::default).await.unwrap();
         listener
             // Ignore accept errors.
             .filter_map(|r| std::future::ready(r.ok()))
@@ -99,8 +98,8 @@ async fn main() {
     // for calling API methods based on events in your app.
     let raft = Raft::new(node_id, raft_config, network.clone(), storage);
 
-    NETWORK.set(network);
-    RAFT.set(raft);
+    let _ = NETWORK.set(network);
+    let _ = RAFT.set(raft.clone());
 
     run_app(raft).await; // This is subjective. Do it your own way.
                          // Just run your app, feeding Raft & client
