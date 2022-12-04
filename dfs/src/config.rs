@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::{borrow::Cow, path::PathBuf};
 
 use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,14 @@ const fn default_file_registry() -> Cow<'static, str> {
         Cow::Borrowed("sqlite:///tmp/db/dev.db")
     } else {
         Cow::Borrowed("sqlite:///local/ddps2221/fileregistry.db")
+    }
+}
+
+fn default_file_dir() -> PathBuf {
+    if cfg!(debug_assertions) {
+        PathBuf::from("/tmp/db/files")
+    } else {
+        PathBuf::from("/local/ddps2221/files")
     }
 }
 
@@ -39,6 +47,9 @@ pub struct Config {
 
     #[serde(default = "default_file_registry")]
     pub file_registry: Cow<'static, str>,
+
+    #[serde(default = "default_file_dir")]
+    pub file_dir: PathBuf,
 
     #[serde(default = "default_ping_interval")]
     pub ping_interval: Duration,

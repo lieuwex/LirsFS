@@ -7,7 +7,10 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::webdav::{DirEntry, FileMetadata};
+use crate::{
+    webdav::{DirEntry, FileMetadata},
+    CONFIG,
+};
 
 pub type Result<T> = std::result::Result<T, FileSystemError>;
 
@@ -37,7 +40,7 @@ impl FileSystem {
 
     fn map_path<P: Into<PathBuf>>(&self, path: P) -> PathBuf {
         let path: PathBuf = path.into();
-        todo!()
+        CONFIG.file_dir.join(path)
     }
     fn get_file<'a>(&'a mut self, uuid: &Uuid) -> Result<&'a mut File> {
         self.open_files
@@ -58,16 +61,27 @@ impl FileSystem {
 
         Ok(uuid)
     }
-    pub async fn read_dir(path: String) -> Result<DirEntry> {
-        todo!()
+    pub async fn read_dir(&self, path: String) -> Result<Vec<DirEntry>> {
+        let path = self.map_path(path);
+
+        let mut res = Vec::new();
+        let mut dir = tokio::fs::read_dir(path).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            res.push(DirEntry::try_from_tokio(entry).await?);
+        }
+
+        Ok(res)
     }
-    pub async fn metadata(path: String) -> Result<FileMetadata> {
-        todo!()
+    pub async fn metadata(&self, path: String) -> Result<FileMetadata> {
+        let path = self.map_path(path);
+        let metadata = tokio::fs::metadata(path).await?;
+        Ok(metadata.into())
     }
 
     pub async fn file_metadata(&mut self, uuid: Uuid) -> Result<FileMetadata> {
         let file = self.get_file(&uuid)?;
-        todo!()
+        let metadata = file.metadata().await?;
+        Ok(metadata.into())
     }
     pub async fn write_bytes(&mut self, uuid: Uuid, buf: &[u8]) -> Result<()> {
         let file = self.get_file(&uuid)?;

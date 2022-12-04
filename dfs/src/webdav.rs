@@ -1,11 +1,13 @@
-use std::{convert::Infallible, net::SocketAddr, time::SystemTime};
+use std::os::unix::ffi::OsStringExt;
+use std::{convert::Infallible, fs, net::SocketAddr, time::SystemTime};
 
 use anyhow::anyhow;
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
+use webdav_handler::fs::FsFuture;
 use webdav_handler::{
     fakels::FakeLs,
-    fs::{DavMetaData, FsResult},
+    fs::{DavDirEntry, DavMetaData, FsError, FsResult},
     localfs::LocalFs,
     DavHandler,
 };
@@ -41,38 +43,101 @@ impl From<SeekFrom> for std::io::SeekFrom {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FileMetadata {}
+pub struct FileMetadata {
+    len: u64,
+
+    created: Option<SystemTime>,
+    modified: Option<SystemTime>,
+    accessed: Option<SystemTime>,
+
+    is_dir: bool,
+}
+
+impl From<fs::Metadata> for FileMetadata {
+    fn from(metadata: fs::Metadata) -> Self {
+        Self {
+            len: metadata.len(),
+
+            created: metadata.created().ok(),
+            modified: metadata.modified().ok(),
+            accessed: metadata.accessed().ok(),
+
+            is_dir: metadata.is_dir(),
+        }
+    }
+}
 
 impl DavMetaData for FileMetadata {
     fn len(&self) -> u64 {
-        todo!()
+        self.len
     }
     fn modified(&self) -> FsResult<SystemTime> {
-        todo!()
+        self.modified.ok_or(FsError::GeneralFailure)
     }
     fn is_dir(&self) -> bool {
-        todo!()
+        self.is_dir
     }
 
     fn is_symlink(&self) -> bool {
         false
     }
     fn accessed(&self) -> FsResult<SystemTime> {
-        todo!()
+        self.accessed.ok_or(FsError::GeneralFailure)
     }
     fn created(&self) -> FsResult<SystemTime> {
-        todo!()
+        self.created.ok_or(FsError::GeneralFailure)
     }
     fn status_changed(&self) -> FsResult<SystemTime> {
         todo!()
     }
     fn executable(&self) -> FsResult<bool> {
-        todo!()
+        Ok(false)
     }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DirEntry {}
+pub struct DirEntry {
+    name: Vec<u8>,
+    metadata: FileMetadata,
+    is_dir: bool,
+    is_file: bool,
+}
+
+impl DirEntry {
+    pub async fn try_from_tokio(e: tokio::fs::DirEntry) -> anyhow::Result<Self> {
+        let metadata = e.metadata().await?;
+        let is_dir = metadata.is_dir();
+        let is_file = metadata.is_file();
+
+        Ok(Self {
+            name: e.file_name().into_vec(),
+            metadata: metadata.into(),
+            is_dir,
+            is_file,
+        })
+    }
+}
+
+impl DavDirEntry for DirEntry {
+    fn name(&self) -> Vec<u8> {
+        self.name.clone()
+    }
+
+    fn metadata<'a>(&'a self) -> FsFuture<Box<dyn DavMetaData>> {
+        Box::pin(async {
+            let res: Box<dyn DavMetaData> = Box::new(self.metadata.clone());
+            Ok(res)
+        })
+    }
+
+    fn is_dir<'a>(&'a self) -> FsFuture<bool> {
+        Box::pin(async { Ok(self.is_dir) })
+    }
+
+    fn is_file<'a>(&'a self) -> FsFuture<bool> {
+        Box::pin(async { Ok(self.is_file) })
+    }
+}
 
 pub async fn listen(addr: &SocketAddr) -> Result<(), anyhow::Error> {
     let dav_server = DavHandler::builder()
