@@ -35,10 +35,16 @@ impl AppRaftNetwork {
     }
 }
 
+#[macro_export]
 macro_rules! assume_client {
     ($network:expr, $node_id:expr) => {{
         let node = $network.assume_node($node_id)?;
         node.get_client().await
+    }};
+
+    ($node_id:expr) => {{
+        let network = NETWORK.get().unwrap();
+        assume_client!(network, $node_id)
     }};
 }
 
