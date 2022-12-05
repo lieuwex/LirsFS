@@ -1,13 +1,23 @@
 use std::os::unix::ffi::OsStringExt;
-use std::{convert::Infallible, fs, net::SocketAddr, time::SystemTime};
+use std::{
+    convert::Infallible,
+    fs,
+    future::{self, Future},
+    net::SocketAddr,
+    pin::Pin,
+    time::SystemTime,
+};
 
 use anyhow::anyhow;
-use hyper::{Body, Request};
+use hyper::{Body, Request, StatusCode};
 use serde::{Deserialize, Serialize};
-use webdav_handler::fs::FsFuture;
 use webdav_handler::{
+    davpath::DavPath,
     fakels::FakeLs,
-    fs::{DavDirEntry, DavMetaData, FsError, FsResult},
+    fs::{
+        DavDirEntry, DavFile, DavFileSystem, DavMetaData, DavProp, FsError, FsFuture, FsResult,
+        FsStream, OpenOptions, ReadDirMeta,
+    },
     localfs::LocalFs,
     DavHandler,
 };
@@ -137,6 +147,80 @@ impl DavDirEntry for DirEntry {
     fn is_file<'a>(&'a self) -> FsFuture<bool> {
         Box::pin(async { Ok(self.is_file) })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebdavFilesystem {}
+
+impl DavFileSystem for WebdavFilesystem {
+    fn open<'a>(&'a self, path: &'a DavPath, options: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
+        todo!()
+    }
+
+    fn read_dir<'a>(
+        &'a self,
+        path: &'a DavPath,
+        meta: ReadDirMeta,
+    ) -> FsFuture<FsStream<Box<dyn DavDirEntry>>> {
+        todo!()
+    }
+
+    fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
+        todo!()
+    }
+
+    fn create_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn remove_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn remove_file<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn set_accessed<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn set_modified<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
+        todo!()
+    }
+
+    fn have_props<'a>(
+        &'a self,
+        path: &'a DavPath,
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        Box::pin(future::ready(false))
+    }
+
+    fn patch_props<'a>(
+        &'a self,
+        path: &'a DavPath,
+        patch: Vec<(bool, DavProp)>,
+    ) -> FsFuture<Vec<(StatusCode, DavProp)>> {
+        todo!()
+    }
+
+    fn get_props<'a>(&'a self, path: &'a DavPath, do_content: bool) -> FsFuture<Vec<DavProp>> {
+        todo!()
+    }
+
+    fn get_prop<'a>(&'a self, path: &'a DavPath, prop: DavProp) -> FsFuture<Vec<u8>> {
+        todo!()
+    }
+
+    //fn get_quota<'a>(&'a self) -> FsFuture<(u64, Option<u64>)>;
 }
 
 pub async fn listen(addr: &SocketAddr) -> Result<(), anyhow::Error> {
