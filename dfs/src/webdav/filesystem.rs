@@ -44,7 +44,7 @@ impl WebdavFilesystem {
 }
 
 async fn assume_random_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId, Client)> {
-    let nodes = fs.get_keeper_nodes(path).await.unwrap();
+    let nodes = fs.get_keeper_nodes(path).await?;
     let node = *nodes
         .choose(&mut thread_rng())
         .ok_or_else(|| anyhow!("no nodes have the file"))?;
@@ -70,7 +70,10 @@ where
             anyhow::Ok(res)
         }
         .await
-        .map_err(|_| FsError::GeneralFailure)?;
+        .map_err(|e| {
+            eprintln!("Catched webdav filesystem error: {:?}", e);
+            FsError::GeneralFailure
+        })?;
         Ok(res)
     })
 }

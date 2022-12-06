@@ -34,7 +34,10 @@ where
             anyhow::Ok(res)
         }
         .await
-        .map_err(|_| FsError::GeneralFailure)?;
+        .map_err(|e| {
+            eprintln!("Catched webdav file error: {:?}", e);
+            FsError::GeneralFailure
+        })?;
         Ok(res)
     })
 }

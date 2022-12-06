@@ -15,6 +15,8 @@ pub struct Server {
     pub remote_addr: SocketAddr,
 }
 
+// TODO: error handling other than unwrap()
+
 #[tarpc::server]
 impl Service for Server {
     async fn append_entries(
