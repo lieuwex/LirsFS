@@ -130,7 +130,7 @@ impl NodeConnection {
     }
 
     /// Returns whether or not the client is _currently_ ready to use.
-    pub fn get_client_state<'a>(&'a self) -> Ref<'a, ConnectionState> {
+    pub fn get_client_state(&self) -> Ref<'_, ConnectionState> {
         self.client_state.borrow()
     }
 

@@ -57,7 +57,7 @@ impl FileSystem {
         let file = File::open(path).await?;
 
         assert!(
-            self.open_files.insert(uuid.clone(), file).is_none(),
+            self.open_files.insert(uuid, file).is_none(),
             "open_files had already a file with this UUID, this is highly unlikely"
         );
 
@@ -87,7 +87,7 @@ impl FileSystem {
     }
     pub async fn write_bytes(&mut self, uuid: Uuid, buf: &[u8]) -> Result<()> {
         let file = self.get_file(&uuid)?;
-        file.write(buf).await?;
+        file.write_all(buf).await?; // REVIEW: do we want to use write_all?
         Ok(())
     }
     pub async fn read_bytes(&mut self, uuid: Uuid, count: usize) -> Result<Vec<u8>> {

@@ -80,7 +80,7 @@ where
 
 impl DavFileSystem for WebdavFilesystem {
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
-        do_fs(&self, path, move |node, client, path| async move {
+        do_fs(self, path, move |node, client, path| async move {
             let uuid = client.open(Context::current(), path.to_string()).await?;
 
             let res = FilePointer::new(node, uuid);
@@ -98,7 +98,7 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
-        do_fs(&self, path, move |_, client, path| async move {
+        do_fs(self, path, move |_, client, path| async move {
             let res = client
                 .metadata(Context::current(), path.to_string())
                 .await?;

@@ -44,7 +44,7 @@ where
 
 impl DavFile for FilePointer {
     fn metadata<'a>(&'a mut self) -> FsFuture<Box<dyn DavMetaData>> {
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             let res = client.file_metadata(Context::current(), fp.file_id).await?;
 
             let res: Box<dyn DavMetaData> = Box::new(res);
@@ -54,7 +54,7 @@ impl DavFile for FilePointer {
 
     fn write_buf<'a>(&'a mut self, buf: Box<dyn bytes::Buf + Send>) -> FsFuture<()> {
         let bytes = buf.chunk().to_vec();
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             client
                 .write_bytes(Context::current(), fp.file_id, bytes)
                 .await
@@ -62,7 +62,7 @@ impl DavFile for FilePointer {
     }
 
     fn write_bytes<'a>(&'a mut self, buf: bytes::Bytes) -> FsFuture<()> {
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             client
                 .write_bytes(Context::current(), fp.file_id, buf.to_vec())
                 .await
@@ -70,7 +70,7 @@ impl DavFile for FilePointer {
     }
 
     fn read_bytes<'a>(&'a mut self, count: usize) -> FsFuture<bytes::Bytes> {
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             let bytes = client
                 .read_bytes(Context::current(), fp.file_id, count)
                 .await?;
@@ -79,7 +79,7 @@ impl DavFile for FilePointer {
     }
 
     fn seek<'a>(&'a mut self, pos: std::io::SeekFrom) -> FsFuture<u64> {
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             client
                 .seek(Context::current(), fp.file_id, pos.into())
                 .await
@@ -87,7 +87,7 @@ impl DavFile for FilePointer {
     }
 
     fn flush<'a>(&'a mut self) -> FsFuture<()> {
-        do_file(*self, move |client: Client, fp| async move {
+        do_file(*self, move |client, fp| async move {
             client.flush(Context::current(), fp.file_id).await
         })
     }
