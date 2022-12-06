@@ -31,6 +31,8 @@ pub struct FileSystem {
     pub open_files: HashMap<Uuid, File>,
 }
 
+// TODO: do hash checking and stuff
+
 impl FileSystem {
     pub fn new() -> Self {
         Self {
