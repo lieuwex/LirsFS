@@ -17,11 +17,11 @@ pub enum Operation {
 pub enum NodeToNodeOperation {
     /// Replicate the file at `path` on the target node specified by `node_id`
     /// The target node will use the [Keepers] table to find out which other node already stores this file, and request the file from that node.
-    /// All other nodes will acknoweldge but ignore this operation.
+    /// This means the target node is now a keeper of the file.
     StoreReplica { path: PathBuf, node_id: NodeId },
 
     /// Delete the file replica of the file at `path` from the target node specified by `node_id`.
-    /// All other nodes will acknoweldge but ignore this operation.
+    /// This means the target node is no longer a keeper of the file.
     DeleteReplica { path: PathBuf, node_id: NodeId },
 
     /// Node joined the network.
@@ -47,20 +47,20 @@ pub enum ClientToNodeOperation {
         replication_factor: usize,
     },
 
-    /// Create a file at `path` with the given `replication_factor`
+    /// Write `contents` to the existing file at `path`, starting from `offset`
     Write {
         path: PathBuf,
-        size: usize,
         offset: usize,
+        contents: Vec<u8>,
     },
 
-    /// Gives the file at `old_path` the new name `new_path`. This operation is used for both renaming and moving a file.
+    /// Give the file at `old_path` the new name `new_path`. This operation is used for both renaming and moving a file.
     Move {
         old_path: PathBuf,
         new_path: PathBuf,
     },
 
-    /// Makes a copy of the file at `orig_path`, at `copy_path`
+    /// Make a copy of the file at `orig_path`, at `copy_path`
     Copy {
         orig_path: PathBuf,
         copy_path: PathBuf,

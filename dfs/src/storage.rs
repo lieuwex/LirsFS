@@ -40,7 +40,7 @@ impl AppRaftStorage {
     }
 
     pub async fn get_own_id(&self) -> NodeId {
-        0 as NodeId
+        CONFIG.node_id
     }
 
     async fn read_hard_state(&self) -> Result<Option<HardState>> {
