@@ -244,6 +244,7 @@ dependencies = [
  "futures-util",
  "hyper",
  "once_cell",
+ "rand 0.8.5",
  "serde",
  "sqlx",
  "tarpc",
