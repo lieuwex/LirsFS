@@ -39,6 +39,8 @@ impl AppRaftNetwork {
 macro_rules! assume_client {
     ($network:expr, $node_id:expr) => {{
         let node = $network.assume_node($node_id)?;
+
+        // TODO: timeout if it takes too long
         node.get_client().await
     }};
 

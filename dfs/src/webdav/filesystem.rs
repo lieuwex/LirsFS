@@ -48,6 +48,7 @@ async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId,
             .iter()
             .map(|&n| {
                 Box::pin(async move {
+                    // TODO: improve error handling
                     let cl = assume_client!(n);
                     anyhow::Ok((n, cl))
                 })
