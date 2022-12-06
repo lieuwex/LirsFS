@@ -241,7 +241,7 @@ dependencies = [
  "anyhow",
  "async-raft",
  "bytes",
- "futures-util",
+ "futures",
  "hyper",
  "once_cell",
  "rand 0.8.5",

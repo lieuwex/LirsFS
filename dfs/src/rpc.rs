@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::server::Server;
 use crate::service::Service;
 
-use futures_util::StreamExt;
+use futures::StreamExt;
 use tarpc::{
     serde_transport::tcp::listen,
     server::{incoming::Incoming, BaseChannel, Channel},

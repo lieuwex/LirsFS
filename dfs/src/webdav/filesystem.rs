@@ -1,11 +1,8 @@
-use std::{
-    future::{self, Future},
-    pin::Pin,
-    time::SystemTime,
-};
+use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
 use async_raft::NodeId;
+use futures::prelude::*;
 use hyper::StatusCode;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -43,13 +40,24 @@ impl WebdavFilesystem {
     }
 }
 
-async fn assume_random_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId, Client)> {
+async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId, Client)> {
     let nodes = fs.get_keeper_nodes(path).await?;
-    let node = *nodes
-        .choose(&mut thread_rng())
-        .ok_or_else(|| anyhow!("no nodes have the file"))?;
 
-    let client = assume_client!(node);
+    let (node, client) = stream::select_all(
+        nodes
+            .iter()
+            .map(|&n| {
+                Box::pin(async move {
+                    let cl = assume_client!(n);
+                    anyhow::Ok((n, cl))
+                })
+            })
+            .map(|c| c.into_stream().filter_map(|c| future::ready(c.ok()))),
+    )
+    .next()
+    .await
+    .ok_or_else(|| anyhow!("no nodes available that have the file"))?;
+
     Ok((node, client))
 }
 
@@ -65,7 +73,7 @@ where
 {
     Box::pin(async move {
         let res = async move {
-            let (node, client) = assume_random_keeper(fs, path).await?;
+            let (node, client) = assume_keeper(fs, path).await?;
             let res = f(node, client, path).await.map_err(|e| e.into())?;
             anyhow::Ok(res)
         }
