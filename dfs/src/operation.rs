@@ -31,6 +31,6 @@ pub enum Operation {
 
     /// Node joined the network
     NodeJoin { node_id: NodeId },
-    /// Node leaved the network
+    /// Node left the network
     NodeLeave { node_id: NodeId },
 }

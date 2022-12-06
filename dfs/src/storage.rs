@@ -1,5 +1,6 @@
 use crate::{
-    client_req::AppClientRequest, client_res::AppClientResponse, db::raftlog::RaftLog, CONFIG,
+    client_req::AppClientRequest, client_res::AppClientResponse, db::raftlog::RaftLog,
+    operation::Operation, CONFIG,
 };
 use anyhow::Result;
 use async_raft::{
@@ -90,24 +91,25 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<AppClientRequest>>> {
-        todo!()
+        Ok(RaftLog::get_range(start, stop).await)
     }
 
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
-        let start = start as u32;
         match stop {
-            Some(stop) => RaftLog::delete_range(start, stop as u32).await,
+            Some(stop) => RaftLog::delete_range(start, stop).await,
             None => RaftLog::delete_from(start).await,
         };
         Ok(())
     }
 
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
-        todo!()
+        RaftLog::insert(std::slice::from_ref(entry)).await;
+        Ok(())
     }
 
     async fn replicate_to_log(&self, entries: &[Entry<AppClientRequest>]) -> Result<()> {
-        todo!()
+        RaftLog::insert(entries).await;
+        Ok(())
     }
 
     async fn apply_entry_to_state_machine(
@@ -115,7 +117,28 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         index: &u64,
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
-        todo!()
+        use Operation::*;
+        match data.operation {
+            Print { .. } => {
+                todo!()
+            }
+            Write { .. } => {
+                todo!()
+            }
+            Store { .. } => {
+                todo!()
+            }
+            StorageLoss { .. } => {
+                todo!()
+            }
+            NodeJoin { .. } => {
+                todo!()
+            }
+            NodeLeave { .. } => {
+                todo!()
+            }
+        };
+        Ok(AppClientResponse(Ok("".into())))
     }
 
     async fn replicate_to_state_machine(
