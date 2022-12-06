@@ -3,11 +3,10 @@ use std::future::Future;
 use anyhow::Result;
 use async_raft::NodeId;
 use tarpc::context::Context;
-use tokio::sync::OwnedRwLockReadGuard;
 use uuid::Uuid;
 use webdav_handler::fs::{DavFile, DavMetaData, FsError, FsFuture};
 
-use crate::service::ServiceClient;
+use super::Client;
 use crate::{assume_client, NETWORK};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -16,7 +15,12 @@ pub struct FilePointer {
     file_id: Uuid,
 }
 
-type Client = OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient>;
+impl FilePointer {
+    pub(super) fn new(node_id: NodeId, file_id: Uuid) -> Self {
+        Self { node_id, file_id }
+    }
+}
+
 fn do_file<'a, Fun, FunRet, OK, ERR>(fp: FilePointer, f: Fun) -> FsFuture<'a, OK>
 where
     Fun: (FnOnce(Client, FilePointer) -> FunRet) + Send + 'a,

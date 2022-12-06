@@ -14,7 +14,12 @@ use std::{convert::Infallible, net::SocketAddr};
 
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request};
+use tokio::sync::OwnedRwLockReadGuard;
 use webdav_handler::{fakels::FakeLs, localfs::LocalFs, DavHandler};
+
+use crate::service::ServiceClient;
+
+type Client = OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient>;
 
 pub async fn listen(addr: &SocketAddr) -> Result<()> {
     let dav_server = DavHandler::builder()

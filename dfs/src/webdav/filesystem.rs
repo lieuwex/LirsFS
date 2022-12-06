@@ -20,11 +20,15 @@ use webdav_handler::{
 
 use crate::{assume_client, NETWORK};
 
+use super::{Client, FilePointer};
+
 #[derive(Debug, Clone)]
 pub struct WebdavFilesystem {}
 
 impl WebdavFilesystem {
     async fn get_keeper_nodes(&self, path: &DavPath) -> Result<Vec<NodeId>> {
+        // TODO: this is currently just a toy example, work this out for real.
+
         let p = path.as_rel_ospath();
         let res = if p.starts_with("a") {
             vec![0]
@@ -39,22 +43,46 @@ impl WebdavFilesystem {
     }
 }
 
+async fn assume_random_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId, Client)> {
+    let nodes = fs.get_keeper_nodes(path).await.unwrap();
+    let node = *nodes
+        .choose(&mut thread_rng())
+        .ok_or_else(|| anyhow!("no nodes have the file"))?;
+
+    let client = assume_client!(node);
+    Ok((node, client))
+}
+
+fn do_fs<'a, Fun, FunRet, OK, ERR>(
+    fs: &'a WebdavFilesystem,
+    path: &'a DavPath,
+    f: Fun,
+) -> FsFuture<'a, OK>
+where
+    Fun: (FnOnce(NodeId, Client, &'a DavPath) -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<OK, ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    Box::pin(async move {
+        let res = async move {
+            let (node, client) = assume_random_keeper(fs, path).await?;
+            let res = f(node, client, path).await.map_err(|e| e.into())?;
+            anyhow::Ok(res)
+        }
+        .await
+        .map_err(|_| FsError::GeneralFailure)?;
+        Ok(res)
+    })
+}
+
 impl DavFileSystem for WebdavFilesystem {
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
-        Box::pin(async {
-            let res = async {
-                let nodes = self.get_keeper_nodes(path).await.unwrap();
+        do_fs(&self, path, move |node, client, path| async move {
+            let uuid = client.open(Context::current(), path.to_string()).await?;
 
-                let node = nodes
-                    .choose(&mut thread_rng())
-                    .ok_or_else(|| anyhow!("no nodes have the file"))?;
-                let client = assume_client!(*node);
-                let uuid = client.open(Context::current(), path.to_string()).await?;
-                anyhow::Ok(todo!())
-            }
-            .await
-            .map_err(|_| FsError::GeneralFailure)?;
-            Ok(res)
+            let res = FilePointer::new(node, uuid);
+            let res: Box<dyn DavFile> = Box::new(res);
+            anyhow::Ok(res)
         })
     }
 
@@ -67,7 +95,13 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
-        todo!()
+        do_fs(&self, path, move |_, client, path| async move {
+            let res = client
+                .metadata(Context::current(), path.to_string())
+                .await?;
+            let res: Box<dyn DavMetaData> = Box::new(res);
+            anyhow::Ok(res)
+        })
     }
 
     fn create_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
@@ -98,28 +132,19 @@ impl DavFileSystem for WebdavFilesystem {
         todo!()
     }
 
+    /*
     fn have_props<'a>(
         &'a self,
         path: &'a DavPath,
-    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
-        Box::pin(future::ready(false))
-    }
-
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
+    fn get_props<'a>(&'a self, path: &'a DavPath, do_content: bool) -> FsFuture<Vec<DavProp>>;
+    fn get_prop<'a>(&'a self, path: &'a DavPath, prop: DavProp) -> FsFuture<Vec<u8>>;
     fn patch_props<'a>(
         &'a self,
         path: &'a DavPath,
         patch: Vec<(bool, DavProp)>,
-    ) -> FsFuture<Vec<(StatusCode, DavProp)>> {
-        todo!()
-    }
-
-    fn get_props<'a>(&'a self, path: &'a DavPath, do_content: bool) -> FsFuture<Vec<DavProp>> {
-        todo!()
-    }
-
-    fn get_prop<'a>(&'a self, path: &'a DavPath, prop: DavProp) -> FsFuture<Vec<u8>> {
-        todo!()
-    }
+    ) -> FsFuture<Vec<(StatusCode, DavProp)>>;
+    */
 
     //fn get_quota<'a>(&'a self) -> FsFuture<(u64, Option<u64>)>;
 }
