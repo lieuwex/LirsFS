@@ -11,29 +11,34 @@ pub enum Operation {
     FromNode(NodeToNodeOperation),
 }
 
+/// Operations that a node in the Raft cluster can perform that involve other nodes in the cluster.
+/// I.e., an internal operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NodeToNodeOperation {
     /// Replicate the file at `path` on the target node specified by `node_id`
     /// The target node will use the [Keepers] table to find out which other node already stores this file, and request the file from that node.
+    /// All other nodes will acknoweldge but ignore this operation.
     StoreReplica { path: PathBuf, node_id: NodeId },
 
-    /// Delete the file replica of the file at `path` from the node specified by `node_id`.
+    /// Delete the file replica of the file at `path` from the target node specified by `node_id`.
+    /// All other nodes will acknoweldge but ignore this operation.
     DeleteReplica { path: PathBuf, node_id: NodeId },
 
-    /// Node joined the network
+    /// Node joined the network.
     NodeJoin { node_id: NodeId },
 
-    /// Node left the network
+    /// Node left the network. This could be a temporary node failure.
+    /// Once the Raft cluster's master deems it necessary, it will issue [NodeToNodeOperation::NodeLost],
+    /// indicating that this node is considered lost permanently.
     NodeLeave { node_id: NodeId },
 
-    /// Loss of storage due to node failure
-    StorageLoss {
-        path: PathBuf,
-        sha512: u64,
-        node_id: NodeId,
-    },
+    /// Raft cluster master considers the node `lost_node` to be lost permanently.
+    /// The master will then issue the operations necessary to ensure replication factor of all files is respected.
+    NodeLost { lost_node: NodeId },
 }
 
+/// Operations that a client (e.g. the WebDav server) can request from the Raft cluster.
+/// I.e., an external operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToNodeOperation {
     /// Create a file at `path` with the given `replication_factor`
@@ -53,6 +58,12 @@ pub enum ClientToNodeOperation {
     Move {
         old_path: PathBuf,
         new_path: PathBuf,
+    },
+
+    /// Makes a copy of the file at `orig_path`, at `copy_path`
+    Copy {
+        orig_path: PathBuf,
+        copy_path: PathBuf,
     },
 
     /// Update the replication factor of the given file.

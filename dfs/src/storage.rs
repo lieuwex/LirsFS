@@ -90,6 +90,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
+        // TODO: Also just store in SQLite?
         let path = &CONFIG.hardstate_file;
         let mut file = OpenOptions::new().write(true).open(path).await?;
         file.write_all(&bincode::serialize(hs)?).await?;
