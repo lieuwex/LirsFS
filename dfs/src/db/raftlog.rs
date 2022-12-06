@@ -17,8 +17,19 @@ pub type RaftLogId = u64;
 /// but in our application, use it as a u64.
 pub type RaftLogTerm = u64;
 
+/// Store operations that the Raft cluster should perform as raw bytes, serialized by `bincode`.
+pub type RaftLogEntry = Vec<u8>;
+
+/// Repository that is backed by the `raftlog` table in the SQLite database.
+/// An instance of this struct represents a single entry in that table.
+/// From the outside, however, you interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
+/// Use these associated methods to perform CRUD operations.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RaftLog {}
+pub struct RaftLog {
+    id: RaftLogId,
+    term: RaftLogTerm,
+    entry: RaftLogEntry,
+}
 
 impl RaftLog {
     pub async fn delete_range(from: RaftLogId, to: RaftLogId) {
@@ -68,17 +79,10 @@ impl RaftLog {
     /// Inserts the given Raft log entries into the SQLite database.
     pub async fn insert(entries: &[Entry<AppClientRequest>]) {
         let mut query = QueryBuilder::<Sqlite>::new("INSERT INTO raftlog (id,term,entry) ");
-        let values_to_insert = entries.iter().map(|entry| {
-            (
-                entry.index,
-                entry.term,
-                bincode::serialize(entry).unwrap_or_else(|err| {
-                    panic!("Error serializing log entry {:#?}: {:?}", entry, err)
-                }),
-            )
-        });
-        query.push_values(values_to_insert, |mut b, (index, term, entry)| {
-            b.push_bind(index as i64)
+        let values_to_insert = entries.iter().map(RaftLog::from);
+
+        query.push_values(values_to_insert, |mut b, RaftLog { id, term, entry }| {
+            b.push_bind(id as i64)
                 .push_bind(term as i64)
                 .push_bind(entry);
         });
@@ -118,7 +122,7 @@ impl RaftLog {
         .map(|record| Entry {
             term: record.term as RaftLogTerm,
             index: record.id as RaftLogId,
-            // TODO: Better deserializing error handling
+            // TODO: Better deserialization error handling
             payload: bincode::deserialize(&record.entry).expect("Deserializing entry failed"),
         })
         .collect::<Vec<_>>()
@@ -130,5 +134,17 @@ impl Schema for RaftLog {
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_raftlog.sql"))
+    }
+}
+
+impl From<&Entry<AppClientRequest>> for RaftLog {
+    fn from(entry: &Entry<AppClientRequest>) -> Self {
+        Self {
+            id: entry.index,
+            term: entry.term,
+            entry: bincode::serialize(&entry).unwrap_or_else(|err| {
+                panic!("Error serializing log entry {:#?}: {:?}", entry, err)
+            }),
+        }
     }
 }

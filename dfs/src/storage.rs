@@ -1,6 +1,9 @@
 use crate::{
-    client_req::AppClientRequest, client_res::AppClientResponse, db::raftlog::RaftLog,
-    operation::Operation, CONFIG,
+    client_req::AppClientRequest,
+    client_res::AppClientResponse,
+    db::raftlog::RaftLog,
+    operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
+    CONFIG,
 };
 use anyhow::Result;
 use async_raft::{
@@ -48,6 +51,10 @@ impl AppRaftStorage {
         let hardstate = bincode::deserialize(&buff)?;
         Ok(hardstate)
     }
+
+    async fn handle_client_operation(&self, op: &ClientToNodeOperation) {}
+
+    async fn handle_node_operation(&self, op: &NodeToNodeOperation) {}
 }
 
 #[async_trait]
@@ -118,26 +125,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
         use Operation::*;
-        match data.operation {
-            Print { .. } => {
-                todo!()
-            }
-            Write { .. } => {
-                todo!()
-            }
-            Store { .. } => {
-                todo!()
-            }
-            StorageLoss { .. } => {
-                todo!()
-            }
-            NodeJoin { .. } => {
-                todo!()
-            }
-            NodeLeave { .. } => {
-                todo!()
-            }
+        match &data.operation {
+            FromClient(op) => self.handle_client_operation(op).await,
+            FromNode(op) => self.handle_node_operation(op).await,
         };
+        todo!("handle responses to the client");
         Ok(AppClientResponse(Ok("".into())))
     }
 
