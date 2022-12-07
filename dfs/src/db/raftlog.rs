@@ -51,8 +51,7 @@ pub struct RaftLogRow {
 }
 
 /// Repository that is backed by the `raftlog` table in the SQLite database.
-/// An instance of this struct represents a single entry in that table.
-/// From the outside, however, you interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
+/// You interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
 /// Use these associated methods to perform CRUD operations.
 #[derive(Clone, Debug)]
 pub struct RaftLog<'a>(&'a Database);
