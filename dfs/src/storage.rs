@@ -59,9 +59,25 @@ impl AppRaftStorage {
         Ok(hardstate)
     }
 
-    async fn handle_client_operation(&self, op: &ClientToNodeOperation) {}
+    /// Handle a [ClientToNodeOperation], possibly mutating the file registry.
+    /// If `last_entry_id` is [Some], it must be atomically committed to
+    /// the `snapshot_meta` table together with the operation being performed.
+    async fn handle_client_operation(
+        &self,
+        op: &ClientToNodeOperation,
+        last_entry_id: Option<RaftLogId>,
+    ) {
+    }
 
-    async fn handle_node_operation(&self, op: &NodeToNodeOperation) {}
+    /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
+    /// If `last_entry_id` is [Some], it must be atomically committed to
+    /// the `snapshot_meta` table together with the operation being performed.
+    async fn handle_node_operation(
+        &self,
+        op: &NodeToNodeOperation,
+        last_entry_id: Option<RaftLogId>,
+    ) {
+    }
 }
 
 #[async_trait]
@@ -141,8 +157,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
         match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op).await,
-            Operation::FromNode(op) => self.handle_node_operation(op).await,
+            Operation::FromClient(op) => self.handle_client_operation(op, Some(*index)).await,
+            Operation::FromNode(op) => self.handle_node_operation(op, Some(*index)).await,
         };
         todo!("handle responses to the client");
         Ok(AppClientResponse(Ok("".into())))
@@ -152,14 +168,20 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         &self,
         entries: &[(&u64, &AppClientRequest)],
     ) -> Result<()> {
-        let mut last_entry: RaftLogId;
-        for &(id, data) in entries {
+        let mut last_entry_id: Option<RaftLogId> = None;
+        let mut entries = entries.iter().peekable();
+        while let Some(&(id, data)) = entries.next() {
+            let is_last_entry = entries.peek().is_none();
+            if is_last_entry {
+                last_entry_id = Some(*id);
+            }
+            // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
             match &data.operation {
-                Operation::FromClient(op) => self.handle_client_operation(op).await,
-                Operation::FromNode(op) => self.handle_node_operation(op).await,
+                Operation::FromClient(op) => self.handle_client_operation(op, last_entry_id).await,
+                Operation::FromNode(op) => self.handle_node_operation(op, last_entry_id).await,
             };
-            last_entry = *id;
         }
+
         todo!("handle responses to client");
         Ok(())
     }

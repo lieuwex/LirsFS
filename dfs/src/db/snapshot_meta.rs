@@ -19,14 +19,6 @@ pub struct SnapshotMetaRow {
 pub struct SnapshotMeta<'a>(&'a Database);
 
 impl<'a> SnapshotMeta<'a> {
-    // pub fn in_db() -> Self {
-    //     Self(db())
-    // }
-
-    // pub fn in_snapshot() -> Self {
-    //     Self(snapshot())
-    // }
-
     pub async fn get(&self) -> SnapshotMetaRow {
         let record = query!(
             "
