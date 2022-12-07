@@ -58,10 +58,6 @@ pub struct RaftLogRow {
 pub struct RaftLog<'a>(&'a Database);
 
 impl<'a> RaftLog<'a> {
-    pub fn in_db() -> Self {
-        Self(db())
-    }
-
     pub async fn delete_range(&self, from: RaftLogId, to: RaftLogId) {
         let from = from as i64;
         let to = to as i64;
