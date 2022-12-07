@@ -45,7 +45,7 @@ pub async fn curr_snapshot() -> Result<Database> {
 }
 
 /// Create a snapshot of the file registry into the working snapshot file location.
-pub async fn create_snapshot(_: SnapshotMetaRow) -> Result<()> {
+pub async fn create_snapshot(snapshot_metadata: SnapshotMetaRow) -> Result<()> {
     let wip_snapshot_path = CONFIG.wip_file_registry_snapshot();
     let wip_snapshot_path = wip_snapshot_path
         .to_str()
@@ -57,5 +57,27 @@ pub async fn create_snapshot(_: SnapshotMetaRow) -> Result<()> {
 
     let mut conn = SqliteConnection::connect(&format!("sqlite://{}", wip_snapshot_path)).await?;
     query!("DELETE FROM raftlog").execute(&mut conn).await?;
+
+    // Save the snapshot metadata to the newly generated snapshot
+    let SnapshotMetaRow {
+        last_applied_log,
+        membership,
+        term,
+    } = snapshot_metadata;
+    let term = term as i64;
+    let last_applied_log = last_applied_log as i64;
+    let membership_serialized = bincode::serialize(&membership)?;
+    query!(
+        "
+        REPLACE INTO snapshot_meta (id, term, last_applied_log, membership)
+        VALUES (?, ?, ?, ?);
+    ",
+        0_i64,
+        term,
+        last_applied_log,
+        membership_serialized
+    )
+    .execute(&mut conn)
+    .await?;
     Ok(())
 }
