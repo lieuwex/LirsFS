@@ -73,4 +73,12 @@ impl Config {
     pub fn wip_file_registry_snapshot(&self) -> String {
         self.file_registry_snapshot.clone() + ".wip"
     }
+
+    /// Return the filename of a blank snapshot.
+    /// Raft will create a blank snapshot (= empty file) with this name, then write an existing snapshot into it to install it.
+    /// After the snapshot is finalized, the Raft cluster's master must change this file's name to [Config]'s `file_registry_snapshot`,
+    /// which will complete the installation.
+    pub fn blank_file_registry_snapshot(&self) -> String {
+        self.file_registry_snapshot.clone() + ".blank"
+    }
 }
