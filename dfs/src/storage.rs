@@ -112,26 +112,26 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 start, stop
             );
         }
-        Ok(RaftLog::with(&db()).get_range(start, stop).await)
+        Ok(RaftLog::with(db()).get_range(start, stop).await)
     }
 
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         match stop {
-            Some(stop) => RaftLog::with(&db()).delete_range(start, stop).await,
-            None => RaftLog::with(&db()).delete_from(start).await,
+            Some(stop) => RaftLog::with(db()).delete_range(start, stop).await,
+            None => RaftLog::with(db()).delete_from(start).await,
         };
         Ok(())
     }
 
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
-        RaftLog::with(&db())
+        RaftLog::with(db())
             .insert(std::slice::from_ref(entry))
             .await;
         Ok(())
     }
 
     async fn replicate_to_log(&self, entries: &[Entry<AppClientRequest>]) -> Result<()> {
-        RaftLog::with(&db()).insert(entries).await;
+        RaftLog::with(db()).insert(entries).await;
         Ok(())
     }
 
@@ -167,15 +167,15 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
         let SnapshotMetaRow {
             last_applied_log, ..
-        } = SnapshotMeta::with(&db()).get().await;
+        } = SnapshotMeta::with(db()).get().await;
 
         // Get last known membership config from the log
-        let membership = RaftLog::with(&db())
+        let membership = RaftLog::with(db())
             .get_last_membership_before(last_applied_log)
             .await
             .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
 
-        let term = RaftLog::with(&db()).get_by_id(last_applied_log).await.unwrap_or_else(|| {
+        let term = RaftLog::with(db()).get_by_id(last_applied_log).await.unwrap_or_else(|| {
             panic!("Inconsistent log: `last_applied_log` from the `{}` table was not found in the `{}` table", SnapshotMeta::TABLENAME, RaftLog::TABLENAME)
         }).term;
 
@@ -188,7 +188,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         let snapshot = Box::new(snapshot);
 
         // Delete the Raft log entries up until the last applied log
-        RaftLog::with(&db()).delete_range(0, last_applied_log).await;
+        RaftLog::with(db()).delete_range(0, last_applied_log).await;
 
         // todo!("Remove logs up intil last applied log");
 
