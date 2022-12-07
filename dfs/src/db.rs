@@ -8,7 +8,7 @@ pub mod snapshot_meta;
 use std::{borrow::Borrow, path::Path};
 
 use anyhow::{anyhow, Result};
-use sqlx::{query, Connection, Pool, Sqlite, SqliteConnection, SqlitePool};
+use sqlx::{query, Connection, SqliteConnection, SqlitePool};
 
 use crate::{CONFIG, DB};
 

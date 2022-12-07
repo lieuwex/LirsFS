@@ -13,33 +13,32 @@ const fn default_max_missed_pings() -> usize {
     2
 }
 
-#[cfg(debug_assertions)]
 fn default_file_registry() -> PathBuf {
-    PathBuf::from("/tmp/db/dev.db")
-}
-#[cfg(not(debug_assertions))]
-fn default_file_registry() -> PathBuf {
-    PathBuf::from("/local/ddps2221/fileregistry.db")
+    if cfg!(debug_assertions) {
+        PathBuf::from("/tmp/db/dev.db")
+    } else {
+        PathBuf::from("/local/ddps2221/fileregistry.db")
+    }
 }
 
-#[cfg(debug_assertions)]
 fn default_hardstate_file() -> PathBuf {
-    PathBuf::from("/tmp/raft_hardstate")
+    if cfg!(debug_assertions) {
+        PathBuf::from("/tmp/raft_hardstate")
+    } else {
+        PathBuf::from("/local/ddps2221/raft_hardstate")
+    }
 }
 
-#[cfg(not(debug_assertions))]
-fn default_hardstate_file() -> PathBuf {
-    PathBuf::from("/local/ddps2221/raft_hardstate")
-}
-
-#[cfg(debug_assertions)]
 fn default_file_registry_snapshot() -> PathBuf {
-    PathBuf::from("/tmp/db/snapshot.db")
+    if cfg!(debug_assertions) {
+        PathBuf::from("/tmp/db/snapshot.db")
+    } else {
+        PathBuf::from("/local/ddps2221/snapshot.db")
+    }
 }
 
-#[cfg(not(debug_assertions))]
-fn default_file_registry_snapshot() -> PathBuf {
-    PathBuf::from("/local/ddps2221/snapshot.db")
+const fn default_reconnect_try_interval() -> Duration {
+    Duration::from_millis(500)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +64,8 @@ pub struct Config {
     pub hardstate_file: PathBuf,
     #[serde(default = "default_file_registry_snapshot")]
     pub file_registry_snapshot: PathBuf,
+    #[serde(default = "default_reconnect_try_interval")]
+    pub reconnect_try_interval_ms: Duration,
 }
 
 impl Config {

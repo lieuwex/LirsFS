@@ -9,7 +9,6 @@ use async_raft::{
     },
     Config, RaftNetwork,
 };
-use futures_util::stream::{iter, StreamExt};
 use tarpc::context;
 
 use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
@@ -21,14 +20,13 @@ pub struct AppRaftNetwork {
 }
 
 impl AppRaftNetwork {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let nodes: Vec<Result<_>> = iter(&CONFIG.nodes)
-            .then(|n| async move { anyhow::Ok((n.id, NodeConnection::new(n.id, n.addr).await?)) })
-            .collect()
-            .await;
-        let nodes: Result<HashMap<_, _>> = nodes.into_iter().collect();
+    pub fn new(raft_config: Arc<Config>) -> Self {
+        let nodes: HashMap<_, _> = (CONFIG.nodes)
+            .iter()
+            .map(|n| (n.id, NodeConnection::new(n.id, n.addr)))
+            .collect();
 
-        Ok(Self { nodes: nodes? })
+        Self { nodes }
     }
 
     pub fn assume_node(&self, node_id: u64) -> Result<&NodeConnection> {
