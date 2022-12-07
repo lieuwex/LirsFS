@@ -212,8 +212,6 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         // Delete the Raft log entries up until the last applied log
         RaftLog::with(db()).delete_range(0, last_applied_log).await;
 
-        // todo!("Remove logs up intil last applied log");
-
         Ok(CurrentSnapshotData {
             term,
             index: last_applied_log,
