@@ -26,6 +26,7 @@ pub enum ConnectionState {
     Reconnecting { failure_reason: RpcError },
 }
 
+#[derive(Debug)]
 pub struct NodeConnection {
     client_state: watch::Receiver<ConnectionState>,
     client: Arc<RwLock<Option<ServiceClient>>>,
