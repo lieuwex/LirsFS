@@ -5,7 +5,7 @@ pub mod raftlog;
 pub mod schema;
 pub mod snapshot_meta;
 
-use std::path::Path;
+use std::{borrow::Borrow, path::Path};
 
 use anyhow::{anyhow, Result};
 use sqlx::{query, Connection, Pool, Sqlite, SqliteConnection, SqlitePool};
@@ -27,9 +27,15 @@ impl Database {
     }
 }
 
+impl AsRef<SqlitePool> for Database {
+    fn as_ref(&self) -> &SqlitePool {
+        self.pool.borrow()
+    }
+}
+
 /// Return the global instance of the SQLite database pool for the file registry
-pub fn db() -> Pool<Sqlite> {
-    DB.get().unwrap().pool.clone()
+pub fn db() -> &'static Database {
+    DB.get().unwrap().borrow()
 }
 
 /// Return the global instance of the SQLite database pool for the currently active snapshot
@@ -46,7 +52,7 @@ pub async fn create_snapshot(_: SnapshotMetaRow) -> Result<()> {
         .ok_or_else(|| anyhow!("invalid path string"))?;
 
     query!("VACUUM INTO ?", wip_snapshot_path)
-        .execute(&db())
+        .execute(db().as_ref())
         .await?;
 
     let mut conn = SqliteConnection::connect(&format!("sqlite://{}", wip_snapshot_path)).await?;

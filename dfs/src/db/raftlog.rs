@@ -9,6 +9,7 @@ use crate::client_req::AppClientRequest;
 use super::{
     db,
     schema::{Schema, SqlxQuery},
+    Database,
 };
 
 /// SQLite does not handle u64 types; only i64.
@@ -54,9 +55,9 @@ pub struct RaftLogRow {
 /// From the outside, however, you interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
 /// Use these associated methods to perform CRUD operations.
 #[derive(Clone, Debug)]
-pub struct RaftLog(Pool<Sqlite>);
+pub struct RaftLog<'a>(&'a Database);
 
-impl RaftLog {
+impl<'a> RaftLog<'a> {
     pub fn in_db() -> Self {
         Self(db())
     }
@@ -71,7 +72,7 @@ impl RaftLog {
             from,
             to
         )
-        .execute(&self.0)
+        .execute(self.0.as_ref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -93,7 +94,7 @@ impl RaftLog {
         ",
             from
         )
-        .execute(&self.0)
+        .execute(self.0.as_ref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -125,13 +126,17 @@ impl RaftLog {
                     .push_bind(entry_type as i64);
             },
         );
-        query.build().execute(&self.0).await.unwrap_or_else(|err| {
-            panic!(
-                "Could not insert log entry/entries into {}: {:?}",
-                Self::TABLENAME,
-                err
-            )
-        });
+        query
+            .build()
+            .execute(self.0.as_ref())
+            .await
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Could not insert log entry/entries into {}: {:?}",
+                    Self::TABLENAME,
+                    err
+                )
+            });
     }
 
     /// Retrieves the given range of raft log entries and serializes them into [Entry<AppClientRequest>]s.
@@ -147,7 +152,7 @@ impl RaftLog {
             from,
             to
         )
-        .fetch_all(&self.0)
+        .fetch_all(self.0.as_ref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -180,7 +185,7 @@ impl RaftLog {
         ",
             id
         )
-        .fetch_optional(&self.0)
+        .fetch_optional(self.0.as_ref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -212,7 +217,7 @@ impl RaftLog {
             RaftLogEntryType::ConfigChange as i64,
             before
         )
-        .fetch_one(&self.0)
+        .fetch_one(self.0.as_ref())
         .await
         .map_or_else(
             |err| match err {
@@ -234,15 +239,15 @@ impl RaftLog {
     }
 }
 
-impl Schema for RaftLog {
+impl<'a> Schema<'a> for RaftLog<'a> {
     const TABLENAME: &'static str = "raftlog";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_raftlog.sql"))
     }
 
-    fn with(db: &SqlitePool) -> Self {
-        Self(db.clone())
+    fn with(db: &'a Database) -> Self {
+        Self(db)
     }
 }
 

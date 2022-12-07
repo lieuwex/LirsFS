@@ -59,7 +59,7 @@ async fn main() {
     .unwrap();
 
     // TODO: put behind some CLI flag?
-    create_all_tables(&DB.get().unwrap().pool).await;
+    create_all_tables(&DB.get().unwrap()).await;
 
     tokio::spawn(async {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();

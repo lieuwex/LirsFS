@@ -2,9 +2,12 @@
 //!
 
 use serde::{Deserialize, Serialize};
-use sqlx::{query, SqlitePool};
+use sqlx::query;
 
-use super::schema::{Schema, SqlxQuery};
+use super::{
+    schema::{Schema, SqlxQuery},
+    Database,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeRow {
@@ -13,16 +16,16 @@ pub struct NodeRow {
     pub name: String,
 }
 
-pub struct Node(SqlitePool);
+pub struct Node<'a>(&'a Database);
 
-impl Schema for Node {
+impl<'a> Schema<'a> for Node<'a> {
     const TABLENAME: &'static str = "nodes";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_nodes.sql"))
     }
 
-    fn with(db: &SqlitePool) -> Self {
-        Self(db.clone())
+    fn with(db: &'a Database) -> Self {
+        Self(db)
     }
 }
