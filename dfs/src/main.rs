@@ -37,6 +37,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     toml::from_str(&config).expect("Couldn't parse config file")
 });
 pub static DB: OnceCell<Database> = OnceCell::new();
+pub static SNAPSHOT: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: &RaftApp) -> ! {
     loop {}
@@ -52,11 +53,18 @@ async fn main() {
             .expect("Failed to build Raft config"),
     );
     DB.set(Database {
-        pool: SqlitePool::connect(&CONFIG.file_registry)
+        pool: SqlitePool::connect(&("sqlite://".to_owned() + &CONFIG.file_registry))
             .await
             .expect("Error connecting to file registry"),
     })
     .unwrap();
+    SNAPSHOT
+        .set(Database {
+            pool: SqlitePool::connect(&("sqlite://".to_owned() + &CONFIG.file_registry_snapshot))
+                .await
+                .expect("Error connecting to file registry snapshot"),
+        })
+        .unwrap();
 
     // TODO: put behind some CLI flag?
     create_all_tables(&DB.get().unwrap().pool).await;
@@ -90,7 +98,7 @@ async fn main() {
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
 
     // Get our node's ID from stable storage.
-    let node_id = storage.get_own_id().await;
+    let node_id = storage.get_own_id();
 
     // Create a new Raft node, which spawns an async task which
     // runs the Raft core logic. Keep this Raft instance around

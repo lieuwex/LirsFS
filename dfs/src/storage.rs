@@ -1,7 +1,12 @@
 use crate::{
     client_req::AppClientRequest,
     client_res::AppClientResponse,
-    db::raftlog::RaftLog,
+    db::{
+        curr_snapshot, db,
+        raftlog::{RaftLog, RaftLogId},
+        schema::Schema,
+        snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
+    },
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     CONFIG,
 };
@@ -13,7 +18,7 @@ use async_raft::{
     storage::{CurrentSnapshotData, HardState},
     Config, NodeId, RaftStorage,
 };
-use std::{fmt::Display, sync::Arc};
+use std::{fmt::Display, io::ErrorKind, sync::Arc};
 use thiserror::Error;
 use tokio::{
     fs::{File, OpenOptions},
@@ -32,14 +37,16 @@ impl Display for AppError {
 }
 
 #[derive(Debug)]
-pub struct AppRaftStorage {}
+pub struct AppRaftStorage {
+    config: Arc<Config>,
+}
 
 impl AppRaftStorage {
     pub fn new(config: Arc<Config>) -> Self {
-        Self {}
+        Self { config }
     }
 
-    pub async fn get_own_id(&self) -> NodeId {
+    pub fn get_own_id(&self) -> NodeId {
         CONFIG.node_id
     }
 
@@ -99,24 +106,30 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<AppClientRequest>>> {
-        Ok(RaftLog::get_range(start, stop).await)
+        if start > stop {
+            panic!(
+                "Invalid request to `get_log_entries`, start ({:?}) > stop ({:?})",
+                start, stop
+            );
+        }
+        Ok(RaftLog::in_db().get_range(start, stop).await)
     }
 
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         match stop {
-            Some(stop) => RaftLog::delete_range(start, stop).await,
-            None => RaftLog::delete_from(start).await,
+            Some(stop) => RaftLog::in_db().delete_range(start, stop).await,
+            None => RaftLog::in_db().delete_from(start).await,
         };
         Ok(())
     }
 
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
-        RaftLog::insert(std::slice::from_ref(entry)).await;
+        RaftLog::in_db().insert(std::slice::from_ref(entry)).await;
         Ok(())
     }
 
     async fn replicate_to_log(&self, entries: &[Entry<AppClientRequest>]) -> Result<()> {
-        RaftLog::insert(entries).await;
+        RaftLog::in_db().insert(entries).await;
         Ok(())
     }
 
@@ -125,10 +138,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         index: &u64,
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
-        use Operation::*;
         match &data.operation {
-            FromClient(op) => self.handle_client_operation(op).await,
-            FromNode(op) => self.handle_node_operation(op).await,
+            Operation::FromClient(op) => self.handle_client_operation(op).await,
+            Operation::FromNode(op) => self.handle_node_operation(op).await,
         };
         todo!("handle responses to the client");
         Ok(AppClientResponse(Ok("".into())))
@@ -138,15 +150,65 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         &self,
         entries: &[(&u64, &AppClientRequest)],
     ) -> Result<()> {
-        todo!()
+        let mut last_entry: RaftLogId;
+        for &(id, data) in entries {
+            match &data.operation {
+                Operation::FromClient(op) => self.handle_client_operation(op).await,
+                Operation::FromNode(op) => self.handle_node_operation(op).await,
+            };
+            last_entry = *id;
+        }
+        todo!("handle responses to client");
+        Ok(())
     }
 
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
-        todo!()
+        let SnapshotMetaRow {
+            last_applied_log, ..
+        } = SnapshotMeta::with(&db()).get().await;
+
+        // Get last known membership config from the log
+        let membership = RaftLog::in_db()
+            .get_last_membership_before(last_applied_log)
+            .await
+            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
+
+        let term = RaftLog::in_db().get_by_id(last_applied_log).await.unwrap_or_else(|| {
+            panic!("Inconsistent log: `last_applied_log` from the `{}` table was not found in the `{}` table", SnapshotMeta::TABLENAME, RaftLog::TABLENAME)
+        }).term;
+
+        let snapshot = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .open(CONFIG.wip_file_registry_snapshot())
+            .await
+            // TODO: Better error handling
+            .expect("Error while creating work-in-progess snapshot file during log compaction");
+        let snapshot = Box::new(snapshot);
+
+        // todo!("Carry over ")
+
+        // todo!("Remove logs up intil last applied log");
+
+        Ok(CurrentSnapshotData {
+            term,
+            index: last_applied_log,
+            membership,
+            snapshot,
+        })
     }
 
     async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)> {
-        todo!()
+        Ok((
+            String::from(""), // Snapshot id is irrelevant as we only ever save one snapshot
+            Box::new(
+                tokio::fs::OpenOptions::new()
+                    .create_new(true)
+                    .open(CONFIG.wip_file_registry_snapshot())
+                    .await
+                    // TODO: Better error handling
+                    .expect("Error while creating work-in-progess snapshot file"),
+            ),
+        ))
     }
 
     async fn finalize_snapshot_installation(
@@ -161,6 +223,28 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
-        todo!()
+        let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
+            Ok(file) => file,
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => return Ok(None),
+                _ => panic!(
+                    "Error reading snapshot file at {:#?}: {:#?}",
+                    CONFIG.file_registry_snapshot, err
+                ),
+            },
+        };
+        let snapshot = Box::new(file);
+        let SnapshotMetaRow {
+            last_applied_log,
+            term,
+            membership,
+        } = SnapshotMeta::with(&curr_snapshot()).get().await;
+
+        Ok(Some(CurrentSnapshotData::<Self::Snapshot> {
+            index: last_applied_log,
+            membership,
+            term,
+            snapshot,
+        }))
     }
 }

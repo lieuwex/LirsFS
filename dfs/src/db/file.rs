@@ -1,13 +1,13 @@
 //! The File table holds information about every file in the LirsFs
 
 use serde::{Deserialize, Serialize};
-use sqlx::query;
+use sqlx::{query, SqlitePool};
 
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 
-pub struct File {
+pub struct FileRow {
     pub file_id: i32,
 
     pub file_path: String,
@@ -17,11 +17,18 @@ pub struct File {
     pub replication_factor: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct File(SqlitePool);
+
 impl Schema for File {
     const TABLENAME: &'static str = "files";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_files.sql"))
+    }
+
+    fn with(db: &SqlitePool) -> Self {
+        Self(db.clone())
     }
 }
 

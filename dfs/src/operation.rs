@@ -60,10 +60,10 @@ pub enum ClientToNodeOperation {
         new_path: PathBuf,
     },
 
-    /// Make a copy of the file at `orig_path`, at `copy_path`
+    /// Make a copy of the file at `src_path`, at `dst_path`
     Copy {
-        orig_path: PathBuf,
-        copy_path: PathBuf,
+        src_path: PathBuf,
+        dst_path: PathBuf,
     },
 
     /// Update the replication factor of the given file.

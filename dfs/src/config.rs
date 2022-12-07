@@ -14,11 +14,11 @@ const fn default_max_missed_pings() -> usize {
 
 #[cfg(debug_assertions)]
 fn default_file_registry() -> String {
-    "sqlite:///tmp/db/dev.db".to_owned()
+    "/tmp/db/dev.db".to_owned()
 }
 #[cfg(not(debug_assertions))]
 fn default_file_registry() -> String {
-    "sqlite:///local/ddps2221/fileregistry.db".to_owned()
+    "/local/ddps2221/fileregistry.db".to_owned()
 }
 
 #[cfg(debug_assertions)]
@@ -30,6 +30,17 @@ fn default_hardstate_file() -> String {
 fn default_hardstate_file() -> String {
     "/local/ddps2221/raft_hardstate".to_owned()
 }
+
+#[cfg(debug_assertions)]
+fn default_file_registry_snapshot() -> String {
+    "/tmp/db/snapshot.db".to_owned()
+}
+
+#[cfg(not(debug_assertions))]
+fn default_file_registry_snapshot() -> String {
+    "/local/ddps2221/snapshot.db".to_owned()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -51,4 +62,15 @@ pub struct Config {
     pub file_registry: String,
     #[serde(default = "default_hardstate_file")]
     pub hardstate_file: String,
+    #[serde(default = "default_file_registry_snapshot")]
+    pub file_registry_snapshot: String,
+}
+
+impl Config {
+    /// Return the filename of a work-in-progress snapshot.
+    /// After the snapshot is finalized, the Raft cluster's master must
+    /// change this file's name to [Config]'s `file_registry_snapshot`
+    pub fn wip_file_registry_snapshot(&self) -> String {
+        self.file_registry_snapshot.clone() + ".wip"
+    }
 }

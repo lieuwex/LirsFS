@@ -1,8 +1,8 @@
-use crate::DB;
-
-use super::{file::File, keepers::Keepers, node::Node};
+use super::{
+    file::File, keepers::Keepers, node::Node, raftlog::RaftLog, snapshot_meta::SnapshotMeta,
+};
 use async_raft::async_trait::async_trait;
-use sqlx::{sqlite::SqliteQueryResult, SqliteExecutor};
+use sqlx::{sqlite::SqliteQueryResult, SqlitePool};
 
 pub type SqlxResult = Result<SqliteQueryResult, sqlx::Error>;
 
@@ -14,12 +14,13 @@ pub trait Schema {
     const TABLENAME: &'static str;
 
     fn create_table_query() -> SqlxQuery;
+
+    fn with(db: &SqlitePool) -> Self;
 }
 
-async fn create_table<'a, T, E>(exec: &'a E) -> SqliteQueryResult
+async fn create_table<'a, T>(exec: &SqlitePool) -> SqliteQueryResult
 where
     T: Schema,
-    &'a E: SqliteExecutor<'a>,
 {
     T::create_table_query()
         .execute(exec)
@@ -27,16 +28,10 @@ where
         .unwrap_or_else(|err| panic!("Error creating table `{}`: {}", T::TABLENAME, err))
 }
 
-pub async fn create_all_tables<'a, E>(exec: &'a E)
-where
-    &'a E: SqliteExecutor<'a>,
-{
-    create_table::<File, _>(exec).await;
-    create_table::<Node, _>(exec).await;
-    create_table::<Keepers, _>(exec).await;
-}
-
-/// Return the global instance of the SQLite database pool
-pub fn db() -> impl SqliteExecutor<'static> {
-    &DB.get().unwrap().pool
+pub async fn create_all_tables(exec: &SqlitePool) {
+    create_table::<File>(exec).await;
+    create_table::<Node>(exec).await;
+    create_table::<Keepers>(exec).await;
+    create_table::<RaftLog>(exec).await;
+    create_table::<SnapshotMeta>(exec).await;
 }
