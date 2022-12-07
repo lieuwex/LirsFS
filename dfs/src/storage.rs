@@ -2,7 +2,7 @@ use crate::{
     client_req::AppClientRequest,
     client_res::AppClientResponse,
     db::{
-        curr_snapshot, db,
+        self, curr_snapshot, db,
         raftlog::{RaftLog, RaftLogId},
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
@@ -201,12 +201,15 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             panic!("Inconsistent log: `last_applied_log` from the `{}` table was not found in the `{}` table", SnapshotMeta::TABLENAME, RaftLog::TABLENAME)
         }).term;
 
-        let snapshot = tokio::fs::OpenOptions::new()
-            .create_new(true)
-            .open(CONFIG.wip_file_registry_snapshot())
+        let snapshot_metadata = SnapshotMetaRow {
+            term,
+            last_applied_log,
+            membership,
+        };
+        let snapshot = db::create_snapshot(&snapshot_metadata)
             .await
-            // TODO: Better error handling
-            .expect("Error while creating work-in-progess snapshot file during log compaction");
+            .expect("Error creating snapshot");
+
         let snapshot = Box::new(snapshot);
 
         // Delete the Raft log entries up until the last applied log
@@ -215,7 +218,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         Ok(CurrentSnapshotData {
             term,
             index: last_applied_log,
-            membership,
+            membership: snapshot_metadata.membership,
             snapshot,
         })
     }
