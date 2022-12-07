@@ -52,11 +52,11 @@ async fn main() {
             .validate()
             .expect("Failed to build Raft config"),
     );
-    DB.set(Database {
-        pool: SqlitePool::connect(&("sqlite://".to_owned() + &CONFIG.file_registry))
+    DB.set(
+        Database::from_path(&CONFIG.file_registry)
             .await
             .expect("Error connecting to file registry"),
-    })
+    )
     .unwrap();
     SNAPSHOT
         .set(Database {

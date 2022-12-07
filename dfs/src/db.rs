@@ -5,21 +5,26 @@ pub mod raftlog;
 pub mod schema;
 pub mod snapshot_meta;
 
-use sqlx::{query, sqlite::SqlitePoolOptions, Pool, Sqlite, SqlitePool};
+use std::path::Path;
 
-use crate::{CONFIG, DB, SNAPSHOT};
+use anyhow::{anyhow, Result};
+use sqlx::{query, Connection, Pool, Sqlite, SqliteConnection, SqlitePool};
 
-use self::{
-    file::File,
-    keepers::Keepers,
-    node::Node,
-    schema::{create_all_tables, Schema},
-    snapshot_meta::SnapshotMetaRow,
-};
+use crate::{CONFIG, DB};
+
+use self::snapshot_meta::SnapshotMetaRow;
 
 #[derive(Debug)]
 pub struct Database {
     pub pool: SqlitePool,
+}
+
+impl Database {
+    pub async fn from_path(path: &Path) -> Result<Self> {
+        let path = path.to_str().ok_or_else(|| anyhow!("invalid path"))?;
+        let pool = SqlitePool::connect(&format!("sqlite://{}", path)).await?;
+        Ok(Database { pool })
+    }
 }
 
 /// Return the global instance of the SQLite database pool for the file registry
