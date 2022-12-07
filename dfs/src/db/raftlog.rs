@@ -7,7 +7,7 @@ use sqlx::{query, Pool, QueryBuilder, Sqlite, SqlitePool};
 use crate::client_req::AppClientRequest;
 
 use super::{
-    curr_snapshot, db,
+    db,
     schema::{Schema, SqlxQuery},
 };
 

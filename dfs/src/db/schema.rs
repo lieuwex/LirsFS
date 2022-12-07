@@ -2,7 +2,7 @@ use super::{
     file::File, keepers::Keepers, node::Node, raftlog::RaftLog, snapshot_meta::SnapshotMeta,
 };
 use async_raft::async_trait::async_trait;
-use sqlx::{sqlite::SqliteQueryResult, SqlitePool};
+use sqlx::{sqlite::SqliteQueryResult, Executor, Sqlite, SqliteConnection, SqlitePool};
 
 pub type SqlxResult = Result<SqliteQueryResult, sqlx::Error>;
 

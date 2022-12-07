@@ -238,7 +238,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             last_applied_log,
             term,
             membership,
-        } = SnapshotMeta::with(&curr_snapshot()).get().await;
+        } = SnapshotMeta::with(&curr_snapshot().await?.pool).get().await;
 
         Ok(Some(CurrentSnapshotData::<Self::Snapshot> {
             index: last_applied_log,

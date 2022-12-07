@@ -1,9 +1,9 @@
 use async_raft::raft::MembershipConfig;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Pool, Sqlite, SqlitePool};
+use sqlx::{query, Pool, Sqlite, SqliteConnection, SqlitePool};
 
 use super::{
-    curr_snapshot, db,
+    db,
     raftlog::{RaftLogId, RaftLogTerm},
     schema::Schema,
 };

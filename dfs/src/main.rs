@@ -37,7 +37,6 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     toml::from_str(&config).expect("Couldn't parse config file")
 });
 pub static DB: OnceCell<Database> = OnceCell::new();
-pub static SNAPSHOT: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: &RaftApp) -> ! {
     loop {}
@@ -58,13 +57,6 @@ async fn main() {
             .expect("Error connecting to file registry"),
     )
     .unwrap();
-    SNAPSHOT
-        .set(Database {
-            pool: SqlitePool::connect(&("sqlite://".to_owned() + &CONFIG.file_registry_snapshot))
-                .await
-                .expect("Error connecting to file registry snapshot"),
-        })
-        .unwrap();
 
     // TODO: put behind some CLI flag?
     create_all_tables(&DB.get().unwrap().pool).await;

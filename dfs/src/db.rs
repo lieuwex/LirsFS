@@ -33,22 +33,23 @@ pub fn db() -> Pool<Sqlite> {
 }
 
 /// Return the global instance of the SQLite database pool for the currently active snapshot
-pub fn curr_snapshot() -> Pool<Sqlite> {
-    SNAPSHOT.get().unwrap().pool.clone()
+pub async fn curr_snapshot() -> Result<Database> {
+    let db = Database::from_path(&CONFIG.file_registry_snapshot).await?;
+    Ok(db)
 }
 
-pub async fn create_snapshot(snapshot_metadata: SnapshotMetaRow) -> SqlitePool {
-    let current_db = &CONFIG.file_registry;
+/// Create a snapshot of the file registry into the working snapshot file location.
+pub async fn create_snapshot(_: SnapshotMetaRow) -> Result<()> {
     let wip_snapshot_path = CONFIG.wip_file_registry_snapshot();
+    let wip_snapshot_path = wip_snapshot_path
+        .to_str()
+        .ok_or_else(|| anyhow!("invalid path string"))?;
 
-    // TODO: Error handling
-    tokio::fs::copy(current_db, &wip_snapshot_path)
-        .await
-        .unwrap();
+    query!("VACUUM INTO ?", wip_snapshot_path)
+        .execute(&db())
+        .await?;
 
-    let pool = SqlitePool::connect(&("sqlite://".to_owned() + &wip_snapshot_path))
-        .await
-        .unwrap();
-
-    todo!("Either copy entire db and delete raft entries, OR use attach + insert into");
+    let mut conn = SqliteConnection::connect(&format!("sqlite://{}", wip_snapshot_path)).await?;
+    query!("DELETE FROM raftlog").execute(&mut conn).await?;
+    Ok(())
 }
