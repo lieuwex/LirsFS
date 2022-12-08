@@ -14,7 +14,7 @@ pub struct FileRow {
     pub file_id: i32,
 
     pub file_path: String,
-
+    pub file_size: u64,
     pub content_hash: u64,
 
     pub replication_factor: u32,
