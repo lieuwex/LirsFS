@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 use anyhow::{anyhow, Result};
-use async_raft::NodeId;
+use async_raft::{raft::ClientWriteRequest, NodeId};
 use futures::prelude::*;
 use hyper::StatusCode;
 use rand::seq::SliceRandom;
@@ -15,7 +15,7 @@ use webdav_handler::{
     },
 };
 
-use crate::{assume_client, NETWORK};
+use crate::{assume_client, operation::ClientToNodeOperation, NETWORK, RAFT};
 
 use super::{Client, FilePointer};
 
@@ -140,11 +140,29 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
-        todo!()
+        do_fs(self, move || async move {
+            let raft = RAFT.get().unwrap();
+            raft.client_write(ClientToNodeOperation::Move {
+                // REVIEW: does `as_pathbuf()` give the correct path?
+                old_path: from.as_pathbuf(),
+                new_path: to.as_pathbuf(),
+            })
+            .await?;
+            anyhow::Ok(())
+        })
     }
 
     fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
-        todo!()
+        do_fs(self, move || async move {
+            let raft = RAFT.get().unwrap();
+            raft.client_write(ClientToNodeOperation::Copy {
+                // REVIEW: does `as_pathbuf()` give the correct path?
+                src_path: from.as_pathbuf(),
+                dst_path: to.as_pathbuf(),
+            })
+            .await?;
+            anyhow::Ok(())
+        })
     }
 
     fn set_accessed<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
