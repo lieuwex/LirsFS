@@ -142,7 +142,7 @@ impl DavFileSystem for WebdavFilesystem {
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
-            raft.client_write(ClientToNodeOperation::Move {
+            raft.client_write(ClientToNodeOperation::MoveFile {
                 // REVIEW: does `as_pathbuf()` give the correct path?
                 old_path: from.as_pathbuf(),
                 new_path: to.as_pathbuf(),
@@ -155,7 +155,7 @@ impl DavFileSystem for WebdavFilesystem {
     fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
-            raft.client_write(ClientToNodeOperation::Copy {
+            raft.client_write(ClientToNodeOperation::CopyFile {
                 // REVIEW: does `as_pathbuf()` give the correct path?
                 src_path: from.as_pathbuf(),
                 dst_path: to.as_pathbuf(),
