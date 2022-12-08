@@ -15,7 +15,12 @@ use webdav_handler::{
     },
 };
 
-use crate::{assume_client, operation::ClientToNodeOperation, NETWORK, RAFT};
+use crate::{
+    assume_client,
+    db::{db, file::File, schema::Schema},
+    operation::ClientToNodeOperation,
+    NETWORK, RAFT,
+};
 
 use super::{Client, FilePointer};
 
@@ -112,9 +117,23 @@ impl DavFileSystem for WebdavFilesystem {
     fn read_dir<'a>(
         &'a self,
         path: &'a DavPath,
-        meta: ReadDirMeta,
+        _: ReadDirMeta,
     ) -> FsFuture<FsStream<Box<dyn DavDirEntry>>> {
-        todo!()
+        do_fs(move || async move {
+            let path = path.to_string();
+
+            let files = File::with(db()).get_all().await?;
+            let files = files
+                .into_iter()
+                .filter(move |f| f.file_path.starts_with(&path));
+
+            Ok(stream::iter(files)
+                .map(|f| {
+                    let res: Box<dyn DavDirEntry> = Box::new(f);
+                    res
+                })
+                .boxed())
+        })
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
@@ -128,15 +147,56 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn create_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
-        todo!()
+        do_fs(move || async move {
+            let raft = RAFT.get().unwrap();
+            raft.client_write(ClientToNodeOperation::CreateDir {
+                // REVIEW: does `as_pathbuf()` give the correct path?
+                path: path.as_pathbuf(),
+            })
+            .await?;
+            Ok(())
+        })
     }
 
     fn remove_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
-        todo!()
+        do_fs(move || async move {
+            let stream = self.read_dir(path, ReadDirMeta::None).await?;
+            stream
+                .map(|f| Ok(f))
+                .try_for_each(|f| async move {
+                    let name = todo!();
+
+                    if f.is_dir().await? {
+                        self.remove_dir(&name).await?
+                    } else {
+                        self.remove_file(&name).await?
+                    }
+
+                    Ok(())
+                })
+                .await?;
+
+            let raft = RAFT.get().unwrap();
+            raft.client_write(ClientToNodeOperation::RemoveDir {
+                // REVIEW: does `as_pathbuf()` give the correct path?
+                path: path.as_pathbuf(),
+            })
+            .await?;
+
+            Ok(())
+        })
     }
 
     fn remove_file<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
-        todo!()
+        do_fs(move || async move {
+            let raft = RAFT.get().unwrap();
+            raft.client_write(ClientToNodeOperation::RemoveFile {
+                // REVIEW: does `as_pathbuf()` give the correct path?
+                path: path.as_pathbuf(),
+            })
+            .await?;
+            Ok(())
+        })
     }
 
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {

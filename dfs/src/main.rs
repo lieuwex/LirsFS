@@ -31,6 +31,7 @@ mod raft_app;
 mod server;
 mod service;
 mod storage;
+mod util;
 mod webdav;
 
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
