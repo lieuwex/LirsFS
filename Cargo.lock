@@ -221,6 +221,7 @@ dependencies = [
  "async-raft",
  "futures-util",
  "once_cell",
+ "rand 0.8.5",
  "serde",
  "sqlx",
  "tarpc",
