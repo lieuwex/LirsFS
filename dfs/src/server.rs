@@ -24,7 +24,7 @@ impl Service for Server {
         _: Context,
         request: async_raft::raft::AppendEntriesRequest<crate::client_req::AppClientRequest>,
     ) -> AppendEntriesResponse {
-        let raft = RAFT.get().unwrap();
+        let raft = &RAFT.get().unwrap().app;
         raft.append_entries(request).await.unwrap()
     }
 
@@ -33,12 +33,12 @@ impl Service for Server {
         _: tarpc::context::Context,
         request: async_raft::raft::InstallSnapshotRequest,
     ) -> InstallSnapshotResponse {
-        let raft = RAFT.get().unwrap();
+        let raft = &RAFT.get().unwrap().app;
         raft.install_snapshot(request).await.unwrap()
     }
 
     async fn vote(self, _: Context, request: async_raft::raft::VoteRequest) -> VoteResponse {
-        let raft = RAFT.get().unwrap();
+        let raft = &RAFT.get().unwrap().app;
         raft.vote(request).await.unwrap()
     }
 

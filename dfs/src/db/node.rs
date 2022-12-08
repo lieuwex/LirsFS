@@ -4,19 +4,28 @@
 use serde::{Deserialize, Serialize};
 use sqlx::query;
 
-use super::schema::{Schema, SqlxQuery};
+use super::{
+    schema::{Schema, SqlxQuery},
+    Database,
+};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Node {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeRow {
     pub node_id: i32,
 
     pub name: String,
 }
 
-impl Schema for Node {
+pub struct Node<'a>(&'a Database);
+
+impl<'a> Schema<'a> for Node<'a> {
     const TABLENAME: &'static str = "nodes";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_nodes.sql"))
+    }
+
+    fn with(db: &'a Database) -> Self {
+        Self(db)
     }
 }

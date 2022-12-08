@@ -8,10 +8,10 @@ use tarpc::{
     serde_transport::tcp::listen,
     server::{incoming::Incoming, BaseChannel, Channel},
 };
-use tokio_serde::formats::MessagePack;
+use tokio_serde::formats::Bincode;
 
 pub async fn server(listen_addr: SocketAddr) -> ! {
-    let listener = listen(listen_addr, MessagePack::default).await.unwrap();
+    let listener = listen(listen_addr, Bincode::default).await.unwrap();
     listener
         // Ignore accept errors.
         .filter_map(|r| std::future::ready(r.ok()))

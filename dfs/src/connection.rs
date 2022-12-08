@@ -15,7 +15,7 @@ use tokio::{
     task::JoinHandle,
     time,
 };
-use tokio_serde::formats::MessagePack;
+use tokio_serde::formats::Bincode;
 
 use crate::{service::ServiceClient, CONFIG};
 
@@ -26,6 +26,7 @@ pub enum ConnectionState {
     Reconnecting { failure_reason: RpcError },
 }
 
+#[derive(Debug)]
 pub struct NodeConnection {
     client_state: watch::Receiver<ConnectionState>,
     client: Arc<RwLock<Option<ServiceClient>>>,
@@ -34,7 +35,7 @@ pub struct NodeConnection {
 }
 
 async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
-    let c = tcp::connect(addr, MessagePack::default).await?;
+    let c = tcp::connect(addr, Bincode::default).await?;
     let c = ServiceClient::new(Config::default(), c).spawn();
     Ok(c)
 }

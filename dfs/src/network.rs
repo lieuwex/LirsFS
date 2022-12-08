@@ -16,6 +16,7 @@ use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
 pub const CLIENT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
+#[derive(Debug)]
 pub struct AppRaftNetwork {
     nodes: HashMap<u64, NodeConnection>,
 }
