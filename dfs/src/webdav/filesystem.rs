@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
 use async_raft::{raft::ClientWriteRequest, NodeId};
 use futures::prelude::*;
 use hyper::StatusCode;
@@ -50,7 +50,7 @@ async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId,
                 Box::pin(async move {
                     // TODO: improve error handling
                     let cl = assume_client!(n);
-                    anyhow::Ok((n, cl))
+                    Ok((n, cl))
                 })
             })
             .map(|c| c.into_stream().filter_map(|c| future::ready(c.ok()))),
@@ -62,7 +62,7 @@ async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId,
     Ok((node, client))
 }
 
-fn do_fs<'a, Fun, FunRet, OK, ERR>(fs: &'a WebdavFilesystem, f: Fun) -> FsFuture<'a, OK>
+fn do_fs<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
 where
     Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
@@ -71,14 +71,14 @@ where
     Box::pin(async move {
         let res = async move {
             let res = f().await.map_err(|e| e.into())?;
-            anyhow::Ok(res)
+            Ok(res)
         }
         .await
         .map_err(|e| {
             eprintln!("Catched webdav filesystem error: {:?}", e);
             FsError::GeneralFailure
         })?;
-        Ok(res)
+        std::result::Result::Ok(res)
     })
 }
 
@@ -92,7 +92,7 @@ where
     FunRet: Future<Output = Result<OK, ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
-    do_fs(fs, move || async move {
+    do_fs(move || async move {
         let (node, client) = assume_keeper(fs, path).await?;
         f(node, client, path).await.map_err(|e| e.into())
     })
@@ -105,7 +105,7 @@ impl DavFileSystem for WebdavFilesystem {
 
             let res = FilePointer::new(node, uuid);
             let res: Box<dyn DavFile> = Box::new(res);
-            anyhow::Ok(res)
+            Ok(res)
         })
     }
 
@@ -123,7 +123,7 @@ impl DavFileSystem for WebdavFilesystem {
                 .metadata(Context::current(), path.to_string())
                 .await?;
             let res: Box<dyn DavMetaData> = Box::new(res);
-            anyhow::Ok(res)
+            Ok(res)
         })
     }
 
@@ -140,7 +140,7 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
-        do_fs(self, move || async move {
+        do_fs(move || async move {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::Move {
                 // REVIEW: does `as_pathbuf()` give the correct path?
@@ -148,12 +148,12 @@ impl DavFileSystem for WebdavFilesystem {
                 new_path: to.as_pathbuf(),
             })
             .await?;
-            anyhow::Ok(())
+            Ok(())
         })
     }
 
     fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
-        do_fs(self, move || async move {
+        do_fs(move || async move {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::Copy {
                 // REVIEW: does `as_pathbuf()` give the correct path?
@@ -161,7 +161,7 @@ impl DavFileSystem for WebdavFilesystem {
                 dst_path: to.as_pathbuf(),
             })
             .await?;
-            anyhow::Ok(())
+            Ok(())
         })
     }
 
