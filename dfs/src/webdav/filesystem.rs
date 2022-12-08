@@ -62,20 +62,15 @@ async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId,
     Ok((node, client))
 }
 
-fn do_fs<'a, Fun, FunRet, OK, ERR>(
-    fs: &'a WebdavFilesystem,
-    path: &'a DavPath,
-    f: Fun,
-) -> FsFuture<'a, OK>
+fn do_fs<'a, Fun, FunRet, OK, ERR>(fs: &'a WebdavFilesystem, f: Fun) -> FsFuture<'a, OK>
 where
-    Fun: (FnOnce(NodeId, Client, &'a DavPath) -> FunRet) + Send + 'a,
+    Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
     Box::pin(async move {
         let res = async move {
-            let (node, client) = assume_keeper(fs, path).await?;
-            let res = f(node, client, path).await.map_err(|e| e.into())?;
+            let res = f().await.map_err(|e| e.into())?;
             anyhow::Ok(res)
         }
         .await
@@ -87,9 +82,25 @@ where
     })
 }
 
+fn do_fs_file<'a, Fun, FunRet, OK, ERR>(
+    fs: &'a WebdavFilesystem,
+    path: &'a DavPath,
+    f: Fun,
+) -> FsFuture<'a, OK>
+where
+    Fun: (FnOnce(NodeId, Client, &'a DavPath) -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<OK, ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    do_fs(fs, move || async move {
+        let (node, client) = assume_keeper(fs, path).await?;
+        f(node, client, path).await.map_err(|e| e.into())
+    })
+}
+
 impl DavFileSystem for WebdavFilesystem {
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
-        do_fs(self, path, move |node, client, path| async move {
+        do_fs_file(self, path, move |node, client, path| async move {
             let uuid = client.open(Context::current(), path.to_string()).await?;
 
             let res = FilePointer::new(node, uuid);
@@ -107,7 +118,7 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
-        do_fs(self, path, move |_, client, path| async move {
+        do_fs_file(self, path, move |_, client, path| async move {
             let res = client
                 .metadata(Context::current(), path.to_string())
                 .await?;
