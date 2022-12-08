@@ -52,9 +52,7 @@ impl AppRaftStorage {
 
     async fn read_hard_state(&self) -> Result<Option<HardState>> {
         let path = &CONFIG.hardstate_file;
-        let mut file = File::open(path).await?;
-        let mut buff: Vec<u8> = vec![];
-        file.read_exact(&mut buff).await?;
+        let buff = tokio::fs::read(path).await?;
         let hardstate = bincode::deserialize(&buff)?;
         Ok(hardstate)
     }
@@ -115,9 +113,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         // TODO: Also just store in SQLite?
         let path = &CONFIG.hardstate_file;
-        let mut file = OpenOptions::new().write(true).open(path).await?;
-        file.write_all(&bincode::serialize(hs)?).await?;
-        file.flush().await?;
+        tokio::fs::write(path, &bincode::serialize(hs)?).await?;
         Ok(())
     }
 
