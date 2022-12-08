@@ -20,10 +20,6 @@ use async_raft::{
 };
 use std::{fmt::Display, io::ErrorKind, sync::Arc};
 use thiserror::Error;
-use tokio::{
-    fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncWriteExt},
-};
 
 #[derive(Error, Debug)]
 pub struct AppError {
