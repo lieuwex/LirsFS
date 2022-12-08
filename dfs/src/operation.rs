@@ -11,6 +11,18 @@ pub enum Operation {
     FromNode(NodeToNodeOperation),
 }
 
+impl From<ClientToNodeOperation> for Operation {
+    fn from(o: ClientToNodeOperation) -> Self {
+        Self::FromClient(o)
+    }
+}
+
+impl From<NodeToNodeOperation> for Operation {
+    fn from(o: NodeToNodeOperation) -> Self {
+        Self::FromNode(o)
+    }
+}
+
 /// Operations that a node in the Raft cluster can perform that involve other nodes in the cluster.
 /// I.e., an internal operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
