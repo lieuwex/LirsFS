@@ -1,7 +1,7 @@
 use crate::db::keepers::Keepers;
 use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::SystemTime};
 
 /// Mutating operations that the Raft cluster can perform on the application's state machine (the file registry).
 /// An operation either comes from a fellow node (a [NodeToNodeOperation]) or a client (a [ClientToNodeOperation])
@@ -34,7 +34,10 @@ pub enum NodeToNodeOperation {
 
     /// Raft cluster master considers the node `lost_node` to be lost permanently.
     /// The master will then issue the operations necessary to ensure replication factor of all files is respected.
-    NodeLost { lost_node: NodeId },
+    NodeLost {
+        lost_node: NodeId,
+        last_contact: SystemTime,
+    },
 }
 
 /// Operations that a client (e.g. the WebDav server) can request from the Raft cluster.
