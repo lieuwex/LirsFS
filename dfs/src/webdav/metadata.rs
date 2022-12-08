@@ -5,13 +5,13 @@ use webdav_handler::fs::{DavMetaData, FsError, FsResult};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FileMetadata {
-    len: u64,
+    pub(super) len: u64,
 
-    created: Option<SystemTime>,
-    modified: Option<SystemTime>,
-    accessed: Option<SystemTime>,
+    pub(super) created: Option<SystemTime>,
+    pub(super) modified: Option<SystemTime>,
+    pub(super) accessed: Option<SystemTime>,
 
-    is_dir: bool,
+    pub(super) is_dir: bool,
 }
 
 impl From<fs::Metadata> for FileMetadata {

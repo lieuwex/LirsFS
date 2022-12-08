@@ -1,6 +1,4 @@
-use std::os::unix::ffi::OsStringExt;
-
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture};
 
@@ -8,30 +6,28 @@ use super::FileMetadata;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DirEntry {
-    name: Vec<u8>,
+    name: String,
     metadata: FileMetadata,
-    is_dir: bool,
-    is_file: bool,
 }
 
 impl DirEntry {
     pub async fn try_from_tokio(e: tokio::fs::DirEntry) -> Result<Self> {
         let metadata = e.metadata().await?;
-        let is_dir = metadata.is_dir();
-        let is_file = metadata.is_file();
+        let name = e
+            .file_name()
+            .into_string()
+            .map_err(|_| anyhow!("couldn't map file_name to string"))?;
 
         Ok(Self {
-            name: e.file_name().into_vec(),
+            name,
             metadata: metadata.into(),
-            is_dir,
-            is_file,
         })
     }
 }
 
 impl DavDirEntry for DirEntry {
     fn name(&self) -> Vec<u8> {
-        self.name.clone()
+        self.name.clone().into_bytes()
     }
 
     fn metadata<'a>(&'a self) -> FsFuture<Box<dyn DavMetaData>> {
@@ -39,13 +35,5 @@ impl DavDirEntry for DirEntry {
             let res: Box<dyn DavMetaData> = Box::new(self.metadata.clone());
             Ok(res)
         })
-    }
-
-    fn is_dir<'a>(&'a self) -> FsFuture<bool> {
-        Box::pin(async { Ok(self.is_dir) })
-    }
-
-    fn is_file<'a>(&'a self) -> FsFuture<bool> {
-        Box::pin(async { Ok(self.is_file) })
     }
 }
