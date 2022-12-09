@@ -20,10 +20,6 @@ use async_raft::{
 };
 use std::{fmt::Display, io::ErrorKind, sync::Arc};
 use thiserror::Error;
-use tokio::{
-    fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncWriteExt},
-};
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -52,9 +48,7 @@ impl AppRaftStorage {
 
     async fn read_hard_state(&self) -> Result<Option<HardState>> {
         let path = &CONFIG.hardstate_file;
-        let mut file = File::open(path).await?;
-        let mut buff: Vec<u8> = vec![];
-        file.read_exact(&mut buff).await?;
+        let buff = tokio::fs::read(path).await?;
         let hardstate = bincode::deserialize(&buff)?;
         Ok(hardstate)
     }
@@ -115,9 +109,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         // TODO: Also just store in SQLite?
         let path = &CONFIG.hardstate_file;
-        let mut file = OpenOptions::new().write(true).open(path).await?;
-        file.write_all(&bincode::serialize(hs)?).await?;
-        file.flush().await?;
+        tokio::fs::write(path, &bincode::serialize(hs)?).await?;
         Ok(())
     }
 
@@ -168,13 +160,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         &self,
         entries: &[(&u64, &AppClientRequest)],
     ) -> Result<()> {
-        let mut last_entry_id: Option<RaftLogId> = None;
         let mut entries = entries.iter().peekable();
         while let Some(&(id, data)) = entries.next() {
             let is_last_entry = entries.peek().is_none();
-            if is_last_entry {
-                last_entry_id = Some(*id);
-            }
+            let last_entry_id = is_last_entry.then_some(*id);
+
             // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
             match &data.operation {
                 Operation::FromClient(op) => self.handle_client_operation(op, last_entry_id).await,
@@ -251,15 +241,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
         let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
             Ok(file) => file,
-            Err(err) => match err.kind() {
-                ErrorKind::NotFound => return Ok(None),
-                _ => panic!(
-                    "Error reading snapshot file at {:#?}: {:#?}",
-                    CONFIG.file_registry_snapshot, err
-                ),
-            },
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => panic!(
+                "Error reading snapshot file at {:#?}: {:#?}",
+                CONFIG.file_registry_snapshot, err
+            ),
         };
-        let snapshot = Box::new(file);
         let SnapshotMetaRow {
             last_applied_log,
             term,
@@ -270,7 +257,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             index: last_applied_log,
             membership,
             term,
-            snapshot,
+            snapshot: Box::new(file),
         }))
     }
 }

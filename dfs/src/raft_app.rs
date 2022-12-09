@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Deref};
 
 use async_raft::{
     raft::{ClientWriteRequest, ClientWriteResponse},
@@ -32,11 +32,17 @@ impl RaftApp {
     }
 }
 
+impl Deref for RaftApp {
+    type Target = Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>;
+    fn deref(&self) -> &Self::Target {
+        &self.app
+    }
+}
+
 impl Debug for RaftApp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let leader = futures::executor::block_on(self.app.current_leader())
-            .map_or("<no leader>".to_string(), |leader_id| leader_id.to_string());
-
-        write!(f, "Raft app - {:#?}", leader)
+        f.debug_struct("RaftApp")
+            .field("app.metrics().borrow()", &self.metrics().borrow())
+            .finish()
     }
 }

@@ -2,6 +2,7 @@ use std::{net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_raft::NodeId;
+use rand::{thread_rng, Rng};
 use tarpc::{
     client::{Config, RpcError},
     context,
@@ -46,14 +47,17 @@ async fn pinger(
     client: Arc<RwLock<Option<ServiceClient>>>,
     ready: watch::Sender<ConnectionState>,
 ) -> ! {
-    // TODO: add some randomization so that not all nodes fire pings all at the same time.
-
     let mut interval = time::interval(CONFIG.ping_interval);
     interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
     let mut missed_count = 0usize;
     loop {
         interval.tick().await;
+        time::sleep({
+            let ms = thread_rng().gen_range(0..=(5 * 1000));
+            Duration::from_millis(ms)
+        })
+        .await;
 
         let mut lock = client.write().await;
 
