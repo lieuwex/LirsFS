@@ -219,6 +219,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-raft",
+ "bincode",
+ "futures",
  "futures-util",
  "once_cell",
  "rand 0.8.5",
