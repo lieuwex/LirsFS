@@ -18,8 +18,11 @@ use async_raft::{
     storage::{CurrentSnapshotData, HardState},
     Config, NodeId, RaftStorage,
 };
-use std::{fmt::Display, io::ErrorKind, sync::Arc};
+use futures::TryStreamExt;
+use sqlx::query;
+use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
+use tokio::fs::OpenOptions;
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -238,13 +241,57 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         term: u64,
         delete_through: Option<u64>,
         id: String,
-        snapshot: Box<Self::Snapshot>,
+        mut snapshot: Box<Self::Snapshot>,
     ) -> Result<()> {
-        // TODO: Transfer most recent membership and log entries >`delete_through` from current db to the received `snapshot` db
+        let tmp_path = {
+            let path = CONFIG.wip_file_registry_snapshot();
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .await?;
+            tokio::io::copy(&mut snapshot, &mut file).await?;
+            path
+        };
 
-        // TODO: Set `snapshot` as the current snapshot
+        let membership = RaftLog::with(db())
+            .get_last_membership_before(index)
+            .await
+            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
 
-        todo!()
+        // Transfer most recent membership and log entries >`delete_through` from current db to the received `snapshot` db
+        let mut tx = db().pool.begin().await?;
+        query(
+            "
+            ATTACH DATABASE ?1 AS snapshot;
+
+            DELETE FROM snapshot.nodes;
+            INSERT INTO snapshot.nodes SELECT * FROM nodes;
+
+            DELETE FROM snapshot.raftlog;
+            INSERT INTO snapshot.raftlog SELECT * FROM raftlog WHERE id > ?2 AND ?3;
+
+            DETACH DATABASE snapshot;
+        ",
+        )
+        .bind(tmp_path.to_str().unwrap())
+        .bind(delete_through.map(|id| id as i64).unwrap_or(-1))
+        .bind(delete_through.is_some()) // HACK
+        .execute_many(&mut tx)
+        .await
+        .try_for_each(|_| async move { Ok(()) })
+        .await?;
+        tx.commit().await?;
+
+        tokio::fs::rename(tmp_path, &CONFIG.file_registry_snapshot).await?;
+
+        RaftLog::with(db())
+            .insert(once(&Entry::new_snapshot_pointer(
+                index, term, id, membership,
+            )))
+            .await;
+
+        Ok(())
     }
 
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
