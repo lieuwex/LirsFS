@@ -76,8 +76,12 @@ async fn pinger(
                 let c = match connect(addr).await {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!("error while connecting, retrying in 500ms: {:?}", e);
-                        time::sleep(CONFIG.reconnect_try_interval_ms).await;
+                        let interval = CONFIG.reconnect_try_interval_ms;
+                        eprintln!(
+                            "error while connecting, retrying in {:?}: {:?}",
+                            interval, e
+                        );
+                        time::sleep(interval).await;
                         continue;
                     }
                 };
