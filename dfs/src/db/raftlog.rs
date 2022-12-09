@@ -232,6 +232,22 @@ impl<'a> RaftLog<'a> {
             },
         )
     }
+
+    pub async fn get_last_log_entry_id_term(&self) -> Option<(RaftLogId, RaftLogTerm)> {
+        query!(
+            "
+            SELECT id, term
+            FROM raftlog
+            WHERE id=(SELECT MAX(id) FROM raftlog)
+        "
+        )
+        .fetch_one(self.0.as_ref())
+        .await
+        .map_or_else(
+            |err| todo!("Handle error"),
+            |record| Some((record.id as RaftLogId, record.term as RaftLogTerm)),
+        )
+    }
 }
 
 impl<'a> Schema<'a> for RaftLog<'a> {

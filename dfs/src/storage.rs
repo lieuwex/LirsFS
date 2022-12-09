@@ -94,13 +94,16 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         };
         let membership = self.get_membership_config().await?;
 
+        let last_applied_log = SnapshotMeta::with(db()).get().await.last_applied_log;
+        let (last_log_index, last_log_term) =
+            RaftLog::with(db()).get_last_log_entry_id_term().await.expect("Inconsistent `raftlog`: hardstate file was found but there were no entries in the raft log");
+
         let state = InitialState {
             hard_state,
             membership,
-            // TODO: figure these out from our saved raft log
-            last_applied_log: todo!(),
-            last_log_index: todo!(),
-            last_log_term: todo!(),
+            last_applied_log,
+            last_log_index,
+            last_log_term,
         };
 
         Ok(state)
