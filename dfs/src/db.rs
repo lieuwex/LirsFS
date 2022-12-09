@@ -14,6 +14,9 @@ use crate::{CONFIG, DB};
 
 use self::snapshot_meta::SnapshotMetaRow;
 
+// TODO: find a way to detect db corruptions, not only hashes for the log would be nice, but for
+// the whole db.
+
 #[derive(Debug)]
 pub struct Database {
     pub pool: SqlitePool,

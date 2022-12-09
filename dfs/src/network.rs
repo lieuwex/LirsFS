@@ -38,6 +38,7 @@ impl AppRaftNetwork {
     }
 }
 
+// TODO: also retry on file read error, make sure we won't retry the same keeper node
 #[macro_export]
 macro_rules! assume_client {
     ($network:expr, $node_id:expr, $timeout:expr) => {{
