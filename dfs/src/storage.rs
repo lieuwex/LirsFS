@@ -243,6 +243,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         id: String,
         mut snapshot: Box<Self::Snapshot>,
     ) -> Result<()> {
+        // REVIEW (lieuwe): I am not sure if this is correct, actually.
+
         let tmp_path = {
             let path = CONFIG.wip_file_registry_snapshot();
             let mut file = OpenOptions::new()
