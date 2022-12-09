@@ -230,7 +230,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                     .open(CONFIG.blank_file_registry_snapshot())
                     .await
                     // TODO: Better error handling
-                    .expect("Error while creating work-in-progess snapshot file"),
+                    .expect("Error while creating blank snapshot file"),
             ),
         ))
     }
