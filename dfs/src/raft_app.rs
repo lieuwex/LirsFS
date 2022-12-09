@@ -1,6 +1,6 @@
 use std::{fmt::Debug, ops::Deref};
 
-use async_raft::{Raft, RaftMetrics};
+use async_raft::Raft;
 
 use crate::{
     client_req::AppClientRequest, client_res::AppClientResponse, network::AppRaftNetwork,
