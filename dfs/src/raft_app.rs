@@ -29,6 +29,8 @@ impl Deref for RaftApp {
 
 impl Debug for RaftApp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.metrics().borrow())
+        f.debug_struct("RaftApp")
+            .field("app.metrics().borrow()", &self.metrics().borrow())
+            .finish()
     }
 }
