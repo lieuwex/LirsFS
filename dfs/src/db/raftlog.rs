@@ -102,9 +102,12 @@ impl<'a> RaftLog<'a> {
     }
 
     /// Inserts the given Raft log entries into the SQLite database.
-    pub async fn insert(&self, entries: &[Entry<AppClientRequest>]) {
+    pub async fn insert<'b, I>(&self, entries: I)
+    where
+        I: IntoIterator<Item = &'b Entry<AppClientRequest>>,
+    {
         let mut query = QueryBuilder::<Sqlite>::new("INSERT INTO raftlog (id,term,entry) ");
-        let values_to_insert = entries.iter().map(RaftLogRow::from);
+        let values_to_insert = entries.into_iter().map(RaftLogRow::from);
 
         query.push_values(
             values_to_insert,
