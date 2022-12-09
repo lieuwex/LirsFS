@@ -199,6 +199,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             last_applied_log,
             membership,
         };
+
+        // TODO: Better error handling
         let snapshot = db::create_snapshot(&snapshot_metadata)
             .await
             .expect("Error creating snapshot");
@@ -238,6 +240,10 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         id: String,
         snapshot: Box<Self::Snapshot>,
     ) -> Result<()> {
+        // TODO: Transfer most recent membership and log entries >`delete_through` from current db to the received `snapshot` db
+
+        // TODO: Set `snapshot` as the current snapshot
+
         todo!()
     }
 
