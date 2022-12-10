@@ -2,6 +2,7 @@ use std::{net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_raft::NodeId;
+use rand::{thread_rng, Rng};
 use tarpc::{
     client::{Config, RpcError},
     context,
@@ -46,14 +47,27 @@ async fn pinger(
     client: Arc<RwLock<Option<ServiceClient>>>,
     ready: watch::Sender<ConnectionState>,
 ) -> ! {
-    // TODO: add some randomization so that not all nodes fire pings all at the same time.
-
     let mut interval = time::interval(CONFIG.ping_interval);
     interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
+    let mut state = ConnectionState::Connecting;
+    macro_rules! set_state {
+        ($new:expr) => {
+            state = $new;
+            ready.send_replace(state.clone());
+        };
+    }
+
     let mut missed_count = 0usize;
     loop {
-        interval.tick().await;
+        if matches!(state, ConnectionState::Ready) {
+            interval.tick().await;
+            time::sleep({
+                let ms = thread_rng().gen_range(0..=(5 * 1000));
+                Duration::from_millis(ms)
+            })
+            .await;
+        }
 
         let mut lock = client.write().await;
 
@@ -62,15 +76,19 @@ async fn pinger(
                 let c = match connect(addr).await {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!("error while connecting, retrying in 500ms: {:?}", e);
-                        time::sleep(CONFIG.reconnect_try_interval_ms).await;
+                        let interval = CONFIG.reconnect_try_interval_ms;
+                        eprintln!(
+                            "error while connecting, retrying in {:?}: {:?}",
+                            interval, e
+                        );
+                        time::sleep(interval).await;
                         continue;
                     }
                 };
 
                 missed_count = 0;
                 *lock = Some(c);
-                ready.send_replace(ConnectionState::Ready);
+                set_state!(ConnectionState::Ready);
                 break lock.deref().as_ref().unwrap();
             },
             Some(c) => c,
@@ -90,7 +108,7 @@ async fn pinger(
                 if missed_count > CONFIG.max_missed_pings {
                     eprintln!("reconnecting {} to {}", node_id, addr);
                     *lock = None;
-                    ready.send_replace(ConnectionState::Reconnecting { failure_reason: e });
+                    set_state!(ConnectionState::Reconnecting { failure_reason: e });
                 }
             }
             Ok(()) => {

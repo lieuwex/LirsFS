@@ -22,7 +22,7 @@ use futures::TryStreamExt;
 use sqlx::query;
 use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
-use tokio::fs::OpenOptions;
+use tokio::fs::{File, OpenOptions};
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -79,7 +79,7 @@ impl AppRaftStorage {
 
 #[async_trait]
 impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
-    type Snapshot = tokio::fs::File;
+    type Snapshot = File;
     type ShutdownError = AppError;
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
@@ -297,7 +297,13 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
-        let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
+        let SnapshotMetaRow {
+            last_applied_log,
+            term,
+            membership,
+        } = SnapshotMeta::with(&curr_snapshot().await?).get().await;
+
+        let file = match File::open(&CONFIG.file_registry_snapshot).await {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => panic!(
@@ -305,11 +311,6 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 CONFIG.file_registry_snapshot, err
             ),
         };
-        let SnapshotMetaRow {
-            last_applied_log,
-            term,
-            membership,
-        } = SnapshotMeta::with(&curr_snapshot().await?).get().await;
 
         Ok(Some(CurrentSnapshotData::<Self::Snapshot> {
             index: last_applied_log,
