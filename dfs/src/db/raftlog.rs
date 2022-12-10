@@ -2,15 +2,11 @@ use async_raft::{
     raft::{Entry, EntryConfigChange, EntryPayload, MembershipConfig},
     AppData,
 };
-use sqlx::{query, Pool, QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{query, QueryBuilder, Sqlite, SqliteConnection};
 
 use crate::client_req::AppClientRequest;
 
-use super::{
-    db,
-    schema::{Schema, SqlxQuery},
-    Database,
-};
+use super::schema::{Schema, SqlxQuery};
 
 /// SQLite does not handle u64 types; only i64.
 /// Therefore we save the raft log id (also called `index`) as an i64,
@@ -54,10 +50,10 @@ pub struct RaftLogRow {
 /// You interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
 /// Use these associated methods to perform CRUD operations.
 #[derive(Clone, Debug)]
-pub struct RaftLog<'a>(&'a Database);
+pub struct RaftLog;
 
-impl<'a> RaftLog<'a> {
-    pub async fn delete_range(&self, from: RaftLogId, to: RaftLogId) {
+impl RaftLog {
+    pub async fn delete_range(conn: &mut SqliteConnection, from: RaftLogId, to: RaftLogId) {
         let from = from as i64;
         let to = to as i64;
         query!(
@@ -67,7 +63,7 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .execute(self.0.deref())
+        .execute(conn)
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -80,7 +76,7 @@ impl<'a> RaftLog<'a> {
         });
     }
 
-    pub async fn delete_from(&self, from: RaftLogId) {
+    pub async fn delete_from(conn: &mut SqliteConnection, from: RaftLogId) {
         let from = from as i64;
         query!(
             "
@@ -89,7 +85,7 @@ impl<'a> RaftLog<'a> {
         ",
             from
         )
-        .execute(self.0.deref())
+        .execute(conn)
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -102,7 +98,7 @@ impl<'a> RaftLog<'a> {
     }
 
     /// Inserts the given Raft log entries into the SQLite database.
-    pub async fn insert<'b, I>(&self, entries: I)
+    pub async fn insert<'b, I>(conn: &mut SqliteConnection, entries: I)
     where
         I: IntoIterator<Item = &'b Entry<AppClientRequest>>,
     {
@@ -124,21 +120,21 @@ impl<'a> RaftLog<'a> {
                     .push_bind(entry_type as i64);
             },
         );
-        query
-            .build()
-            .execute(self.0.deref())
-            .await
-            .unwrap_or_else(|err| {
-                panic!(
-                    "Could not insert log entry/entries into {}: {:?}",
-                    Self::TABLENAME,
-                    err
-                )
-            });
+        query.build().execute(conn).await.unwrap_or_else(|err| {
+            panic!(
+                "Could not insert log entry/entries into {}: {:?}",
+                Self::TABLENAME,
+                err
+            )
+        });
     }
 
     /// Retrieves the given range of raft log entries and serializes them into [Entry<AppClientRequest>]s.
-    pub async fn get_range(&self, from: RaftLogId, to: RaftLogId) -> Vec<Entry<AppClientRequest>> {
+    pub async fn get_range(
+        conn: &mut SqliteConnection,
+        from: RaftLogId,
+        to: RaftLogId,
+    ) -> Vec<Entry<AppClientRequest>> {
         let from = from as i64;
         let to = to as i64;
         query!(
@@ -150,7 +146,7 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .fetch_all(self.0.deref())
+        .fetch_all(conn)
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -173,7 +169,10 @@ impl<'a> RaftLog<'a> {
 
     /// Retrieves the raft log entry with the given `id` and serializes it into [Entry<AppClientRequest>]s.
     /// Returns [None] if entry is not found.
-    pub async fn get_by_id(&self, id: RaftLogId) -> Option<Entry<AppClientRequest>> {
+    pub async fn get_by_id(
+        conn: &mut SqliteConnection,
+        id: RaftLogId,
+    ) -> Option<Entry<AppClientRequest>> {
         let id = id as i64;
         query!(
             "
@@ -183,7 +182,7 @@ impl<'a> RaftLog<'a> {
         ",
             id
         )
-        .fetch_optional(self.0.deref())
+        .fetch_optional(conn)
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -204,7 +203,10 @@ impl<'a> RaftLog<'a> {
     }
 
     /// Get the last known membership config before the specified Raft log entry
-    pub async fn get_last_membership_before(&self, before: RaftLogId) -> Option<MembershipConfig> {
+    pub async fn get_last_membership_before(
+        conn: &mut SqliteConnection,
+        before: RaftLogId,
+    ) -> Option<MembershipConfig> {
         let before = before as i64;
         query!(
             "
@@ -215,7 +217,7 @@ impl<'a> RaftLog<'a> {
             RaftLogEntryType::ConfigChange as i64,
             before
         )
-        .fetch_one(self.0.deref())
+        .fetch_one(conn)
         .await
         .map_or_else(
             |err| match err {
@@ -236,7 +238,9 @@ impl<'a> RaftLog<'a> {
         )
     }
 
-    pub async fn get_last_log_entry_id_term(&self) -> Option<(RaftLogId, RaftLogTerm)> {
+    pub async fn get_last_log_entry_id_term(
+        conn: &mut SqliteConnection,
+    ) -> Option<(RaftLogId, RaftLogTerm)> {
         query!(
             "
             SELECT id, term
@@ -244,7 +248,7 @@ impl<'a> RaftLog<'a> {
             WHERE id=(SELECT MAX(id) FROM raftlog)
         "
         )
-        .fetch_one(self.0.deref())
+        .fetch_one(conn)
         .await
         .map_or_else(
             |err| todo!("Handle error"),
@@ -253,15 +257,11 @@ impl<'a> RaftLog<'a> {
     }
 }
 
-impl<'a> Schema<'a> for RaftLog<'a> {
+impl Schema for RaftLog {
     const TABLENAME: &'static str = "raftlog";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_raftlog.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }
 

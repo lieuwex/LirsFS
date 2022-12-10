@@ -45,10 +45,18 @@ pub fn db() -> &'static Database {
     DB.get().unwrap().borrow()
 }
 
-/// Return the global instance of the SQLite database pool for the currently active snapshot
-pub async fn curr_snapshot() -> Result<Database> {
-    let db = Database::from_path(&CONFIG.file_registry_snapshot).await?;
-    Ok(db)
+#[macro_export]
+macro_rules! db_conn {
+    () => {
+        db().acquire().await.unwrap().borrow_mut()
+    };
+}
+
+/// Open an SqliteConnection for the currently active snapshot
+pub async fn curr_snapshot() -> Result<SqliteConnection> {
+    let path = &CONFIG.file_registry_snapshot;
+    let conn = SqliteConnection::connect(&Database::map_path(path)?).await?;
+    Ok(conn)
 }
 
 /// Create a snapshot of the file registry into the working snapshot file location.

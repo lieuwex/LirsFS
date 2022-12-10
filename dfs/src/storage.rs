@@ -7,6 +7,7 @@ use crate::{
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
     },
+    db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     CONFIG,
 };
@@ -20,7 +21,7 @@ use async_raft::{
 };
 use futures::TryStreamExt;
 use sqlx::query;
-use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
+use std::{borrow::BorrowMut, fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
 use tokio::fs::{File, OpenOptions};
 
@@ -97,9 +98,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         };
         let membership = self.get_membership_config().await?;
 
-        let last_applied_log = SnapshotMeta::with(db()).get().await.last_applied_log;
+        let last_applied_log = SnapshotMeta::get(db_conn!()).await.last_applied_log;
         let (last_log_index, last_log_term) =
-            RaftLog::with(db()).get_last_log_entry_id_term().await.expect("Inconsistent `raftlog`: hardstate file was found but there were no entries in the raft log");
+            RaftLog::get_last_log_entry_id_term(db_conn!()).await.expect("Inconsistent `raftlog`: hardstate file was found but there were no entries in the raft log");
 
         let state = InitialState {
             hard_state,
@@ -126,26 +127,24 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 start, stop
             );
         }
-        Ok(RaftLog::with(db()).get_range(start, stop).await)
+        Ok(RaftLog::get_range(db_conn!(), start, stop).await)
     }
 
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         match stop {
-            Some(stop) => RaftLog::with(db()).delete_range(start, stop).await,
-            None => RaftLog::with(db()).delete_from(start).await,
+            Some(stop) => RaftLog::delete_range(db_conn!(), start, stop).await,
+            None => RaftLog::delete_from(db_conn!(), start).await,
         };
         Ok(())
     }
 
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
-        RaftLog::with(db())
-            .insert(std::slice::from_ref(entry))
-            .await;
+        RaftLog::insert(db_conn!(), std::slice::from_ref(entry)).await;
         Ok(())
     }
 
     async fn replicate_to_log(&self, entries: &[Entry<AppClientRequest>]) -> Result<()> {
-        RaftLog::with(db()).insert(entries).await;
+        RaftLog::insert(db_conn!(), entries).await;
         Ok(())
     }
 
@@ -183,17 +182,18 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
 
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
+        let mut tx = db().begin().await?;
+
         let SnapshotMetaRow {
             last_applied_log, ..
-        } = SnapshotMeta::with(db()).get().await;
+        } = SnapshotMeta::get(&mut tx).await;
 
         // Get last known membership config from the log
-        let membership = RaftLog::with(db())
-            .get_last_membership_before(last_applied_log)
+        let membership = RaftLog::get_last_membership_before(&mut tx, last_applied_log)
             .await
             .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
 
-        let term = RaftLog::with(db()).get_by_id(last_applied_log).await.unwrap_or_else(|| {
+        let term = RaftLog::get_by_id(&mut tx,last_applied_log).await.unwrap_or_else(|| {
             panic!("Inconsistent log: `last_applied_log` from the `{}` table was not found in the `{}` table", SnapshotMeta::TABLENAME, RaftLog::TABLENAME)
         }).term;
 
@@ -211,7 +211,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         let snapshot = Box::new(snapshot);
 
         // Delete the Raft log entries up until the last applied log
-        RaftLog::with(db()).delete_range(0, last_applied_log).await;
+        RaftLog::delete_range(&mut tx, 0, last_applied_log).await;
+
+        tx.commit().await?;
 
         Ok(CurrentSnapshotData {
             term,
@@ -256,13 +258,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             path
         };
 
-        let membership = RaftLog::with(db())
-            .get_last_membership_before(index)
+        let mut tx = db().begin().await?;
+        let membership = RaftLog::get_last_membership_before(&mut tx, index)
             .await
             .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
 
         // Transfer most recent membership and log entries >`delete_through` from current db to the received `snapshot` db
-        let mut tx = db().pool.begin().await?;
         query(
             "
             ATTACH DATABASE ?1 AS snapshot;
@@ -283,16 +284,16 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         .await
         .try_for_each(|_| async move { Ok(()) })
         .await?;
-        tx.commit().await?;
 
         tokio::fs::rename(tmp_path, &CONFIG.file_registry_snapshot).await?;
 
-        RaftLog::with(db())
-            .insert(once(&Entry::new_snapshot_pointer(
-                index, term, id, membership,
-            )))
-            .await;
+        RaftLog::insert(
+            &mut tx,
+            once(&Entry::new_snapshot_pointer(index, term, id, membership)),
+        )
+        .await;
 
+        tx.commit().await?;
         Ok(())
     }
 
@@ -301,7 +302,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             last_applied_log,
             term,
             membership,
-        } = SnapshotMeta::with(&curr_snapshot().await?).get().await;
+        } = SnapshotMeta::get(&mut curr_snapshot().await?).await;
 
         let file = match File::open(&CONFIG.file_registry_snapshot).await {
             Ok(file) => file,

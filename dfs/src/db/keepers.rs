@@ -15,16 +15,12 @@ pub struct KeepersRow {
     pub node_id: i32,
 }
 
-pub struct Keepers<'a>(&'a Database);
+pub struct Keepers;
 
-impl<'a> Schema<'a> for Keepers<'a> {
+impl Schema for Keepers {
     const TABLENAME: &'static str = "keepers";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_keepers.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }

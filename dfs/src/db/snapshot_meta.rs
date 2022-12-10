@@ -16,17 +16,17 @@ pub struct SnapshotMetaRow {
 }
 
 #[derive(Clone, Debug)]
-pub struct SnapshotMeta<'a>(&'a Database);
+pub struct SnapshotMeta;
 
-impl<'a> SnapshotMeta<'a> {
-    pub async fn get(&self) -> SnapshotMetaRow {
+impl SnapshotMeta {
+    pub async fn get(conn: &mut SqliteConnection) -> SnapshotMetaRow {
         let record = query!(
             "
             SELECT * 
             FROM snapshot_meta;
         "
         )
-        .fetch_one(self.0.deref())
+        .fetch_one(conn)
         .await
         .unwrap_or_else(|err| panic!("Error retrieving snapshot data from db: {:#?}", err));
 
@@ -40,14 +40,10 @@ impl<'a> SnapshotMeta<'a> {
     }
 }
 
-impl<'a> Schema<'a> for SnapshotMeta<'a> {
+impl Schema for SnapshotMeta {
     const TABLENAME: &'static str = "snapshot_meta";
 
     fn create_table_query() -> super::schema::SqlxQuery {
         query(include_str!("../../sql/create_snapshot_meta.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }

@@ -16,16 +16,12 @@ pub struct NodeRow {
     pub name: String,
 }
 
-pub struct Node<'a>(&'a Database);
+pub struct Node;
 
-impl<'a> Schema<'a> for Node<'a> {
+impl Schema for Node {
     const TABLENAME: &'static str = "nodes";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_nodes.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }
