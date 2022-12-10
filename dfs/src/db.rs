@@ -48,7 +48,10 @@ pub fn db() -> &'static Database {
 #[macro_export]
 macro_rules! db_conn {
     () => {
-        db().acquire().await.unwrap().borrow_mut()
+        db().acquire()
+            .await
+            .expect("couldn't acquire connection")
+            .borrow_mut()
     };
 }
 
