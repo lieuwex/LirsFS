@@ -67,7 +67,7 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .execute(self.0.as_ref())
+        .execute(self.0.deref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -89,7 +89,7 @@ impl<'a> RaftLog<'a> {
         ",
             from
         )
-        .execute(self.0.as_ref())
+        .execute(self.0.deref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -126,7 +126,7 @@ impl<'a> RaftLog<'a> {
         );
         query
             .build()
-            .execute(self.0.as_ref())
+            .execute(self.0.deref())
             .await
             .unwrap_or_else(|err| {
                 panic!(
@@ -150,7 +150,7 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .fetch_all(self.0.as_ref())
+        .fetch_all(self.0.deref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -183,7 +183,7 @@ impl<'a> RaftLog<'a> {
         ",
             id
         )
-        .fetch_optional(self.0.as_ref())
+        .fetch_optional(self.0.deref())
         .await
         .unwrap_or_else(|err| {
             panic!(
@@ -215,7 +215,7 @@ impl<'a> RaftLog<'a> {
             RaftLogEntryType::ConfigChange as i64,
             before
         )
-        .fetch_one(self.0.as_ref())
+        .fetch_one(self.0.deref())
         .await
         .map_or_else(
             |err| match err {
@@ -244,7 +244,7 @@ impl<'a> RaftLog<'a> {
             WHERE id=(SELECT MAX(id) FROM raftlog)
         "
         )
-        .fetch_one(self.0.as_ref())
+        .fetch_one(self.0.deref())
         .await
         .map_or_else(
             |err| todo!("Handle error"),

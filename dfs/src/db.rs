@@ -5,7 +5,7 @@ pub mod raftlog;
 pub mod schema;
 pub mod snapshot_meta;
 
-use std::{borrow::Borrow, path::Path};
+use std::{borrow::Borrow, ops::Deref, path::Path};
 
 use anyhow::{anyhow, Result};
 use sqlx::{query, Connection, SqliteConnection, SqlitePool};
@@ -20,15 +20,22 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn from_path(path: &Path) -> Result<Self> {
+    pub(self) fn map_path(path: &Path) -> Result<String> {
         let path = path.to_str().ok_or_else(|| anyhow!("invalid path"))?;
-        let pool = SqlitePool::connect(&format!("sqlite://{}", path)).await?;
+        let conn_str = format!("sqlite://{}", path);
+        Ok(conn_str)
+    }
+
+    pub async fn from_path(path: &Path) -> Result<Self> {
+        let pool = SqlitePool::connect(&Self::map_path(path)?).await?;
         Ok(Database { pool })
     }
 }
 
-impl AsRef<SqlitePool> for Database {
-    fn as_ref(&self) -> &SqlitePool {
+impl Deref for Database {
+    type Target = SqlitePool;
+
+    fn deref(&self) -> &Self::Target {
         self.pool.borrow()
     }
 }
@@ -53,7 +60,7 @@ pub async fn create_snapshot(snapshot_metadata: &SnapshotMetaRow) -> Result<toki
         .ok_or_else(|| anyhow!("invalid path string"))?;
 
     query!("VACUUM INTO ?", wip_snapshot_path)
-        .execute(db().as_ref())
+        .execute(db().deref())
         .await?;
 
     let mut conn = SqliteConnection::connect(&format!("sqlite://{}", wip_snapshot_path)).await?;

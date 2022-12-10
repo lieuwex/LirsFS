@@ -26,7 +26,7 @@ impl<'a> SnapshotMeta<'a> {
             FROM snapshot_meta;
         "
         )
-        .fetch_one(self.0.as_ref())
+        .fetch_one(self.0.deref())
         .await
         .unwrap_or_else(|err| panic!("Error retrieving snapshot data from db: {:#?}", err));
 
