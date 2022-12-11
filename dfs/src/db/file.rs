@@ -20,17 +20,13 @@ pub struct FileRow {
 }
 
 #[derive(Clone, Debug)]
-pub struct File<'a>(&'a Database);
+pub struct File;
 
-impl<'a> Schema<'a> for File<'a> {
+impl Schema for File {
     const TABLENAME: &'static str = "files";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_files.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }
 
