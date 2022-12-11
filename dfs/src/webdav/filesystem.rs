@@ -137,11 +137,11 @@ impl DavFileSystem for WebdavFilesystem {
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
-        do_fs_file(self, path, move |_, client, path| async move {
-            let res = client
-                .metadata(Context::current(), path.to_string())
-                .await?;
-            let res: Box<dyn DavMetaData> = Box::new(res);
+        let path = path.to_string();
+        do_fs(move || async move {
+            let file = File::with(db()).get_by_path(&path).await?;
+            let file = file.ok_or_else(|| anyhow!("file not found"))?;
+            let res: Box<dyn DavMetaData> = Box::new(file);
             Ok(res)
         })
     }
