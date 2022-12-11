@@ -90,6 +90,17 @@ impl<'a> File<'a> {
             .await?;
         Ok(res)
     }
+
+    pub async fn get_by_path(&self, path: &str) -> Result<Option<FileRow>> {
+        let res: Option<FileRow> =
+            query("SELECT id, path, size, hash, replication_factor FROM files WHERE path = ?1")
+                .bind(path)
+                .map(|r| Self::map_row(r))
+                .fetch_optional(self.0.as_ref())
+                .await?
+                .transpose()?;
+        Ok(res)
+    }
 }
 
 impl<'a> Schema<'a> for File<'a> {
@@ -103,19 +114,3 @@ impl<'a> Schema<'a> for File<'a> {
         Self(db)
     }
 }
-
-// impl File {
-//     pub async fn get_by_path(path: String, conn: &mut SqlitePool) -> Self {
-//         let x = query!(
-//             "
-//             SELECT id, path, hash, replication_factor
-//             FROM files
-//             WHERE path = ?;
-//             ",
-//             path
-//         );
-//         x
-//         // .fetch_one(conn)
-//         // .await;
-//     }
-// }

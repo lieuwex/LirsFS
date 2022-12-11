@@ -6,4 +6,4 @@ CREATE TABLE IF NOT EXISTS files (
     hash               blob not null,
     replication_factor integer not null
 );
-CREATE INDEX IF NOT EXISTS path_idx ON files (path);
+CREATE UNIQUE INDEX IF NOT EXISTS path_idx ON files (path);
