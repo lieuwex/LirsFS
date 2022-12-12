@@ -2,7 +2,7 @@
 
 use std::time::SystemTime;
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row};
@@ -19,7 +19,7 @@ pub struct FileRow {
     pub file_id: i64,
     pub file_path: String,
     pub file_size: u64,
-    pub content_hash: u64,
+    pub content_hash: Option<u64>,
     pub replication_factor: u64,
 }
 
@@ -53,19 +53,18 @@ pub struct File<'a>(&'a Database);
 
 impl<'a> File<'a> {
     fn map_row(row: SqliteRow) -> Result<FileRow> {
-        let hash: Vec<u8> = row.get("hash");
-        let hash = (hash.len() == 8)
-            .then(|| {
+        let hash: Option<Vec<u8>> = row.get("hash");
+        let hash = match hash {
+            None => None,
+            Some(h) if h.len() == 8 => {
                 let mut bytes: [u8; 8] = [0; 8];
-                bytes.copy_from_slice(&hash);
-                u64::from_le_bytes(bytes)
-            })
-            .ok_or_else(|| {
-                anyhow!(
-                    "expected hash to be 8 bytes, but it is {} bytes",
-                    hash.len()
-                )
-            })?;
+                bytes.copy_from_slice(&h);
+                Some(u64::from_le_bytes(bytes))
+            }
+            Some(h) => {
+                bail!("expected hash to be 8 bytes, but it is {} bytes", h.len())
+            }
+        };
 
         let get_u64 = |name: &str| -> u64 {
             let val: i64 = row.get(name);
