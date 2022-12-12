@@ -58,7 +58,7 @@ impl File {
             Some(h) if h.len() == 8 => {
                 let mut bytes: [u8; 8] = [0; 8];
                 bytes.copy_from_slice(&h);
-                Some(u64::from_le_bytes(bytes))
+                Some(u64::from_be_bytes(bytes))
             }
             Some(h) => {
                 bail!("expected hash to be 8 bytes, but it is {} bytes", h.len())
