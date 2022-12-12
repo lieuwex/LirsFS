@@ -3,10 +3,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::query;
 
-use super::{
-    schema::{Schema, SqlxQuery},
-    Database,
-};
+use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRow {

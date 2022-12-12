@@ -1,11 +1,12 @@
+use anyhow::{anyhow, Result};
 use async_raft::raft::MembershipConfig;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Pool, Sqlite, SqliteConnection, SqlitePool};
+use sqlx::{query, SqliteConnection};
 
 use super::{
+    errors::raftlog_deserialize_error,
     raftlog::{RaftLogId, RaftLogTerm},
     schema::Schema,
-    Database,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,7 +20,7 @@ pub struct SnapshotMetaRow {
 pub struct SnapshotMeta;
 
 impl SnapshotMeta {
-    pub async fn get(conn: &mut SqliteConnection) -> SnapshotMetaRow {
+    pub async fn get(conn: &mut SqliteConnection) -> Result<SnapshotMetaRow> {
         let record = query!(
             "
             SELECT * 
@@ -28,15 +29,16 @@ impl SnapshotMeta {
         )
         .fetch_one(conn)
         .await
-        .unwrap_or_else(|err| panic!("Error retrieving snapshot data from db: {:#?}", err));
+        .map_err(|err| anyhow!("Error retrieving snapshot data from db: {:#?}", err))?;
 
-        SnapshotMetaRow {
+        let membership =
+            bincode::deserialize(&record.membership).map_err(raftlog_deserialize_error)?;
+
+        Ok(SnapshotMetaRow {
             term: record.term as RaftLogTerm,
             last_applied_log: record.last_applied_log as RaftLogId,
-            // TODO: Better error handling
-            membership: bincode::deserialize(&record.membership)
-                .expect("Deserializaton error for membership"),
-        }
+            membership,
+        })
     }
 }
 

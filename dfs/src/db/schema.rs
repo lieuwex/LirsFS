@@ -3,7 +3,7 @@ use super::{
     Database,
 };
 use async_raft::async_trait::async_trait;
-use sqlx::{sqlite::SqliteQueryResult, Executor, SqliteConnection};
+use sqlx::{sqlite::SqliteQueryResult, SqliteConnection};
 
 pub type SqlxResult = Result<SqliteQueryResult, sqlx::Error>;
 

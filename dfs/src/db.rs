@@ -1,3 +1,4 @@
+pub mod errors;
 pub mod file;
 pub mod keepers;
 pub mod node;
