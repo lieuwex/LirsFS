@@ -50,6 +50,21 @@ pub enum NodeToNodeOperation {
         lost_node: NodeId,
         last_contact: SystemTime,
     },
+
+    /// Sent by a keeper when a previous file operation was unsuccessfully finished.
+    FileCommitFail {
+        /// The serial number of the operation to which this commit refers to.
+        serial: u64,
+        /// The reason this commit failed.
+        failure_reason: String, // TODO: different type?
+    },
+    /// Sent by a keeper when a previous file operation was succesfully done.
+    FileCommitSuccess {
+        /// The serial number of the operation to which this commit refers to.
+        serial: u64,
+        /// XxHash64 value for the whole file content at this point.
+        hash: u64,
+    },
 }
 
 /// Operations that a client (e.g. the WebDav server) can request from the Raft cluster.
