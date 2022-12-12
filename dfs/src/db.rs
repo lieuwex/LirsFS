@@ -1,6 +1,7 @@
 pub mod errors;
 pub mod file;
 pub mod keepers;
+pub mod last_applied_entries;
 pub mod node;
 pub mod raftlog;
 pub mod schema;

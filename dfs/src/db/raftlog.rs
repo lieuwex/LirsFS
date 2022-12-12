@@ -205,18 +205,7 @@ impl RaftLog {
             id
         )
         .fetch_optional(conn)
-        .await
-        .map_or_else(
-            |err| {
-                Err(anyhow!(
-                    "Could not get log entry with id {} from {}: {}",
-                    id,
-                    Self::TABLENAME,
-                    err
-                ))
-            },
-            Ok,
-        )?
+        .await?
         .map(|record| {
             Ok(Entry {
                 term: record.term as RaftLogTerm,
@@ -273,13 +262,7 @@ impl RaftLog {
         "
         )
         .fetch_optional(conn)
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Database error getting last log entry id and term: {:#?}",
-                err
-            )
-        })?
+        .await?
         .map(|record| Ok((record.id as RaftLogId, record.term as RaftLogTerm)))
         .transpose()
     }

@@ -3,6 +3,7 @@ use crate::{
     client_res::AppClientResponse,
     db::{
         self, curr_snapshot, db,
+        last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
         raftlog::{RaftLog, RaftLogId},
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
@@ -20,7 +21,7 @@ use async_raft::{
     Config, NodeId, RaftStorage,
 };
 use futures::TryStreamExt;
-use sqlx::query;
+use sqlx::{query, SqliteConnection};
 use std::{borrow::BorrowMut, fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
 use tokio::fs::{File, OpenOptions};
@@ -58,24 +59,15 @@ impl AppRaftStorage {
     }
 
     /// Handle a [ClientToNodeOperation], possibly mutating the file registry.
-    /// If `last_entry_id` is [Some], it must be atomically committed to
-    /// the `snapshot_meta` table together with the operation being performed.
     async fn handle_client_operation(
         &self,
         op: &ClientToNodeOperation,
-        last_entry_id: Option<RaftLogId>,
+        conn: &mut SqliteConnection,
     ) {
     }
 
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
-    /// If `last_entry_id` is [Some], it must be atomically committed to
-    /// the `snapshot_meta` table together with the operation being performed.
-    async fn handle_node_operation(
-        &self,
-        op: &NodeToNodeOperation,
-        last_entry_id: Option<RaftLogId>,
-    ) {
-    }
+    async fn handle_node_operation(&self, op: &NodeToNodeOperation, conn: &mut SqliteConnection) {}
 }
 
 #[async_trait]
@@ -153,11 +145,25 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         index: &u64,
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
+        // If this node has already applied this entry to its state machine before, return the recorded response as-is
+        // so we don't apply the entry twice.
+        if let Some(LastAppliedEntry { id, contents }) =
+            LastAppliedEntries::get(db_conn!(), data.client).await?
+        {
+            if id == data.serial {
+                return Ok(contents);
+            }
+        }
+
+        let mut tx = db().begin().await?;
         match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, Some(*index)).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, Some(*index)).await,
+            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
+            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
         };
-        todo!("handle responses to the client");
+        SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
+        todo!("Record the response to this entry")
+        tx.commit().await;
+        todo!("Better client responses");
         Ok(AppClientResponse(Ok("".into())))
     }
 

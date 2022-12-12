@@ -5,7 +5,7 @@ use sqlx::{query, SqliteConnection};
 
 use super::{
     errors::raftlog_deserialize_error,
-    raftlog::{RaftLogId, RaftLogTerm},
+    raftlog::{RaftLogEntry, RaftLogId, RaftLogTerm},
     schema::Schema,
 };
 
@@ -39,6 +39,25 @@ impl SnapshotMeta {
             last_applied_log: record.last_applied_log as RaftLogId,
             membership,
         })
+    }
+
+    pub async fn set_last_applied_entry(
+        conn: &mut SqliteConnection,
+        entry: RaftLogId,
+    ) -> Result<()> {
+        let entry = entry as i64;
+        query!(
+            "
+            UPDATE snapshot_meta
+            SET last_applied_log = ?
+            WHERE id = 1;
+        ",
+            entry
+        )
+        .execute(conn)
+        .await?;
+
+        Ok(())
     }
 }
 

@@ -8,8 +8,6 @@ use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeRow {
-    pub node_id: i32,
-
     pub name: String,
 }
 
