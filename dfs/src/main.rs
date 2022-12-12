@@ -1,12 +1,21 @@
-use std::{env, fs, net::SocketAddr, sync::Arc};
+use std::{
+    env, fs,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+    sync::Arc,
+};
 
 use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
+use client_req::AppClientRequest;
+use client_res::AppClientResponse;
 use db::Database;
+use filesystem::FileSystem;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 mod client_req;
 mod client_res;
@@ -15,12 +24,15 @@ mod connection;
 mod db;
 mod rpc;
 // mod migrations; <-- Add back later
+mod filesystem;
 mod network;
 mod operation;
 mod raft_app;
 mod server;
 mod service;
 mod storage;
+mod util;
+mod webdav;
 
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
 pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
@@ -29,10 +41,34 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = fs::read_to_string(config_path).unwrap();
     toml::from_str(&config).expect("Couldn't parse config file")
 });
+pub static FILE_SYSTEM: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem::new()));
 pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: &RaftApp) -> ! {
-    loop {}
+    let mut server_task: Option<JoinHandle<()>> = None;
+
+    let mut metrics = raft.app.metrics().clone();
+    loop {
+        metrics.changed().await.unwrap();
+        let m = metrics.borrow();
+        let am_leader = m.current_leader == Some(m.id);
+
+        // control webdav server job
+        match (am_leader, server_task.take()) {
+            (false, None) => {}
+            (true, Some(t)) => server_task = Some(t),
+
+            (false, Some(t)) => t.abort(),
+            (true, None) => {
+                let handle = tokio::spawn(async {
+                    let addr = IpAddr::from_str("::0").unwrap();
+                    let addr: SocketAddr = (addr, 25565).into();
+                    webdav::listen(&addr).await.unwrap();
+                });
+                server_task = Some(handle);
+            }
+        }
+    }
 }
 
 #[tokio::main]

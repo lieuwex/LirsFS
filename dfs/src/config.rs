@@ -1,9 +1,16 @@
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::{borrow::Cow, net::SocketAddr, path::PathBuf};
 
 use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
+
+fn default_file_dir() -> PathBuf {
+    if cfg!(debug_assertions) {
+        PathBuf::from("/tmp/db/files")
+    } else {
+        PathBuf::from("/local/ddps2221/files")
+    }
+}
 
 const fn default_ping_interval() -> Duration {
     Duration::from_secs(60)
@@ -53,6 +60,9 @@ pub struct Config {
     pub cluster_name: String,
     pub nodes: Vec<Node>,
     pub listen_port: usize,
+
+    #[serde(default = "default_file_dir")]
+    pub file_dir: PathBuf,
 
     #[serde(default = "default_ping_interval")]
     pub ping_interval: Duration,

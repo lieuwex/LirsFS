@@ -11,7 +11,7 @@ use tarpc::{
 use tokio::{
     sync::{
         watch::{self, Ref},
-        RwLock, RwLockReadGuard,
+        OwnedRwLockReadGuard, RwLock,
     },
     task::JoinHandle,
     time,
@@ -137,11 +137,11 @@ impl NodeConnection {
     }
 
     /// Retrieve a read lock to the client, locks until the client is ready and obtainable.
-    pub async fn get_client(&self) -> RwLockReadGuard<'_, ServiceClient> {
+    pub async fn get_client(&self) -> OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient> {
         loop {
             self.wait_is_ready().await;
-            let guard = self.client.read().await;
-            match RwLockReadGuard::try_map(guard, |l| l.as_ref()) {
+            let guard = self.client.clone().read_owned().await;
+            match OwnedRwLockReadGuard::try_map(guard, |l| l.as_ref()) {
                 Err(_) => continue,
                 Ok(r) => break r,
             };
@@ -149,7 +149,7 @@ impl NodeConnection {
     }
 
     /// Returns whether or not the client is _currently_ ready to use.
-    pub fn get_client_state<'a>(&'a self) -> Ref<'a, ConnectionState> {
+    pub fn get_client_state(&self) -> Ref<'_, ConnectionState> {
         self.client_state.borrow()
     }
 

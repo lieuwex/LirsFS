@@ -11,6 +11,18 @@ pub enum Operation {
     FromNode(NodeToNodeOperation),
 }
 
+impl From<ClientToNodeOperation> for Operation {
+    fn from(o: ClientToNodeOperation) -> Self {
+        Self::FromClient(o)
+    }
+}
+
+impl From<NodeToNodeOperation> for Operation {
+    fn from(o: NodeToNodeOperation) -> Self {
+        Self::FromNode(o)
+    }
+}
+
 /// Operations that a node in the Raft cluster can perform that involve other nodes in the cluster.
 /// I.e., an internal operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -45,9 +57,13 @@ pub enum NodeToNodeOperation {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToNodeOperation {
     /// Create a file at `path` with the given `replication_factor`
-    Create {
+    CreateFile {
         path: PathBuf,
         replication_factor: usize,
+    },
+    /// Create a dictionary at `path`.
+    CreateDir {
+        path: PathBuf,
     },
 
     /// Write `contents` to the existing file at `path`, starting from `offset`
@@ -58,15 +74,22 @@ pub enum ClientToNodeOperation {
     },
 
     /// Give the file at `old_path` the new name `new_path`. This operation is used for both renaming and moving a file.
-    Move {
+    MoveFile {
         old_path: PathBuf,
         new_path: PathBuf,
     },
 
     /// Make a copy of the file at `src_path`, at `dst_path`
-    Copy {
+    CopyFile {
         src_path: PathBuf,
         dst_path: PathBuf,
+    },
+
+    RemoveFile {
+        path: PathBuf,
+    },
+    RemoveDir {
+        path: PathBuf,
     },
 
     /// Update the replication factor of the given file.
@@ -76,5 +99,7 @@ pub enum ClientToNodeOperation {
     },
 
     /// Test operation that prints something to stdout on the receiver node.
-    Print { message: String },
+    Print {
+        message: String,
+    },
 }
