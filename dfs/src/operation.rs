@@ -1,7 +1,10 @@
 use crate::db::keepers::Keepers;
+
+use std::time::SystemTime;
+
 use async_raft::NodeId;
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::SystemTime};
 
 /// Mutating operations that the Raft cluster can perform on the application's state machine (the file registry).
 /// An operation either comes from a fellow node (a [NodeToNodeOperation]) or a client (a [ClientToNodeOperation])
@@ -30,11 +33,11 @@ pub enum NodeToNodeOperation {
     /// Replicate the file at `path` on the target node specified by `node_id`
     /// The target node will use the [Keepers] table to find out which other node already stores this file, and request the file from that node.
     /// This means the target node is now a keeper of the file.
-    StoreReplica { path: PathBuf, node_id: NodeId },
+    StoreReplica { path: Utf8PathBuf, node_id: NodeId },
 
     /// Delete the file replica of the file at `path` from the target node specified by `node_id`.
     /// This means the target node is no longer a keeper of the file.
-    DeleteReplica { path: PathBuf, node_id: NodeId },
+    DeleteReplica { path: Utf8PathBuf, node_id: NodeId },
 
     /// Node joined the network.
     NodeJoin { node_id: NodeId },
@@ -73,43 +76,43 @@ pub enum NodeToNodeOperation {
 pub enum ClientToNodeOperation {
     /// Create a file at `path` with the given `replication_factor`
     CreateFile {
-        path: PathBuf,
+        path: Utf8PathBuf,
         replication_factor: usize,
     },
     /// Create a dictionary at `path`.
     CreateDir {
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
 
     /// Write `contents` to the existing file at `path`, starting from `offset`
     Write {
-        path: PathBuf,
+        path: Utf8PathBuf,
         offset: usize,
         contents: Vec<u8>,
     },
 
     /// Give the file at `old_path` the new name `new_path`. This operation is used for both renaming and moving a file.
     MoveFile {
-        old_path: PathBuf,
-        new_path: PathBuf,
+        old_path: Utf8PathBuf,
+        new_path: Utf8PathBuf,
     },
 
     /// Make a copy of the file at `src_path`, at `dst_path`
     CopyFile {
-        src_path: PathBuf,
-        dst_path: PathBuf,
+        src_path: Utf8PathBuf,
+        dst_path: Utf8PathBuf,
     },
 
     RemoveFile {
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
     RemoveDir {
-        path: PathBuf,
+        path: Utf8PathBuf,
     },
 
     /// Update the replication factor of the given file.
     ChangeReplicationFactor {
-        path: PathBuf,
+        path: Utf8PathBuf,
         new_replication_factor: usize,
     },
 
