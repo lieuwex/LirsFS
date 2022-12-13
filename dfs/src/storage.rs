@@ -168,7 +168,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
         }?;
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
-        LastAppliedEntries::set(&mut tx, data.client.clone(), *index, &response).await?;
+        LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
         tx.commit().await?;
         Ok(response)
     }
