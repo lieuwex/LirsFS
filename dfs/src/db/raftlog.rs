@@ -32,14 +32,16 @@ pub enum RaftLogEntryType {
     SnapShotPointer = 3,
 }
 
-impl From<i64> for RaftLogEntryType {
-    fn from(i: i64) -> Self {
-        match i {
-            0 => RaftLogEntryType::Blank,
-            1 => RaftLogEntryType::Normal,
-            2 => RaftLogEntryType::ConfigChange,
-            3 => RaftLogEntryType::SnapShotPointer,
-            _ => panic!("Invalid RaftLogEntryType: {}", i),
+impl TryFrom<i64> for RaftLogEntryType {
+    type Error = anyhow::Error;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(RaftLogEntryType::Blank),
+            1 => Ok(RaftLogEntryType::Normal),
+            2 => Ok(RaftLogEntryType::ConfigChange),
+            3 => Ok(RaftLogEntryType::SnapShotPointer),
+            _ => Err(anyhow!("Invalid RaftLogEntryType: {}", value)),
         }
     }
 }
