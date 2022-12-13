@@ -1,3 +1,4 @@
 CREATE TABLE IF NOT EXISTS nodes (
-    name    text primary key
+    id      integer primary key,
+    name    text not null
 );
