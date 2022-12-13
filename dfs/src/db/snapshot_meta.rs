@@ -46,7 +46,7 @@ impl SnapshotMeta {
         entry: RaftLogId,
     ) -> Result<()> {
         let entry = entry as i64;
-        query!(
+        let res = query!(
             "
             UPDATE snapshot_meta
             SET last_applied_log = ?
@@ -56,6 +56,7 @@ impl SnapshotMeta {
         )
         .execute(conn)
         .await?;
+        assert_eq!(res.rows_affected(), 1);
 
         Ok(())
     }
