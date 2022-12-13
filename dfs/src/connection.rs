@@ -99,10 +99,7 @@ async fn pinger(
                 missed_count += 1;
                 eprintln!(
                     "error while pinging to {:?} (missed count {}/{}): {:?}",
-                    addr,
-                    missed_count + 1,
-                    CONFIG.max_missed_pings,
-                    e
+                    addr, missed_count, CONFIG.max_missed_pings, e
                 );
 
                 if missed_count > CONFIG.max_missed_pings {
