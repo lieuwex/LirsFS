@@ -6,14 +6,19 @@ use anyhow::{anyhow, Result};
 use async_raft::NodeId;
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, SqliteConnection};
+use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
+
+use crate::util::blob_to_hash;
 
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepersRow {
+    pub id: i64,
     pub path: PathBuf,
     pub node_id: NodeId,
+
+    pub hash: u64,
 }
 
 pub struct Keepers;
@@ -73,6 +78,31 @@ impl Keepers {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Vec<KeepersRow>> {
+        let res: Vec<_> = query("SELECT keepers.* FROM keepers where path = ?1")
+            .bind(path)
+            .fetch(conn)
+            .map(|r| anyhow::Ok(r?))
+            .and_then(|row: SqliteRow| async move {
+                Ok(KeepersRow {
+                    id: row.get("id"),
+                    path: {
+                        let s: String = row.get("path");
+                        PathBuf::from(s)
+                    },
+                    node_id: {
+                        let id: i64 = row.get("node_id");
+                        u64::try_from(id)?
+                    },
+
+                    hash: blob_to_hash(row.get("hash"))?,
+                })
+            })
+            .try_collect()
+            .await?;
+        Ok(res)
     }
 }
 

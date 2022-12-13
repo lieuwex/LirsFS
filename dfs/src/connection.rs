@@ -59,61 +59,60 @@ async fn pinger(
     }
 
     let mut missed_count = 0usize;
-    loop {
+    'ping: loop {
         if matches!(state, ConnectionState::Ready) {
             interval.tick().await;
-            time::sleep({
-                let ms = thread_rng().gen_range(0..=(5 * 1000));
-                Duration::from_millis(ms)
-            })
-            .await;
+            let dur = thread_rng().gen_range(Duration::ZERO..=(Duration::from_secs(5)));
+            time::sleep(dur).await;
         }
 
         let mut lock = client.write().await;
 
-        let client = match lock.deref() {
-            None => loop {
-                let c = match connect(addr).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let interval = CONFIG.reconnect_try_interval_ms;
-                        eprintln!(
-                            "error while connecting, retrying in {:?}: {:?}",
-                            interval, e
-                        );
-                        time::sleep(interval).await;
-                        continue;
+        'reconnect: loop {
+            let client = match lock.deref() {
+                None => {
+                    let c = match connect(addr).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let interval = CONFIG.reconnect_try_interval_ms;
+                            eprintln!(
+                                "error while connecting, retrying in {:?}: {:?}",
+                                interval, e
+                            );
+                            time::sleep(interval).await;
+                            continue 'reconnect;
+                        }
+                    };
+
+                    missed_count = 0;
+                    *lock = Some(c);
+                    set_state!(ConnectionState::Ready);
+                    lock.deref().as_ref().unwrap()
+                }
+                Some(c) => c,
+            };
+
+            match client.ping(context::current()).await {
+                Err(e) => {
+                    missed_count += 1;
+                    eprintln!(
+                        "error while pinging to {:?} (missed count {}/{}): {:?}",
+                        addr, missed_count, CONFIG.max_missed_pings, e
+                    );
+
+                    if missed_count > CONFIG.max_missed_pings {
+                        eprintln!("reconnecting {} to {}", node_id, addr);
+                        *lock = None;
+                        set_state!(ConnectionState::Reconnecting { failure_reason: e });
+                        continue 'reconnect;
                     }
-                };
-
-                missed_count = 0;
-                *lock = Some(c);
-                set_state!(ConnectionState::Ready);
-                break lock.deref().as_ref().unwrap();
-            },
-            Some(c) => c,
-        };
-
-        match client.ping(context::current()).await {
-            Err(e) => {
-                missed_count += 1;
-                eprintln!(
-                    "error while pinging to {:?} (missed count {}/{}): {:?}",
-                    addr,
-                    missed_count + 1,
-                    CONFIG.max_missed_pings,
-                    e
-                );
-
-                if missed_count > CONFIG.max_missed_pings {
-                    eprintln!("reconnecting {} to {}", node_id, addr);
-                    *lock = None;
-                    set_state!(ConnectionState::Reconnecting { failure_reason: e });
+                }
+                Ok(()) => {
+                    missed_count = 0;
                 }
             }
-            Ok(()) => {
-                missed_count = 0;
-            }
+
+            break 'reconnect;
         }
     }
 }

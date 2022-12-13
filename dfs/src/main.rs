@@ -1,3 +1,5 @@
+#![allow(unused_labels)]
+
 use std::{
     env, fs,
     net::{IpAddr, SocketAddr},

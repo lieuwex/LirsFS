@@ -1,12 +1,15 @@
 //! The File table holds information about every file in the LirsFs
 
-use std::time::SystemTime;
+use std::{
+    borrow::Borrow,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use super::{
     schema::{Schema, SqlxQuery},
     Database,
 };
-use crate::util::flatten_result;
+use crate::util::{blob_to_hash, flatten_result};
 use anyhow::{bail, Result};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -17,6 +20,7 @@ use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
 pub struct FileRow {
     pub file_path: String,
     pub file_size: u64,
+    pub modified_at: SystemTime,
     pub content_hash: Option<u64>,
     pub replication_factor: u64,
 }
@@ -38,7 +42,7 @@ impl DavMetaData for FileRow {
     }
 
     fn modified(&self) -> FsResult<SystemTime> {
-        todo!()
+        Ok(self.modified_at)
     }
 
     fn is_dir(&self) -> bool {
@@ -54,26 +58,23 @@ impl File {
         let hash: Option<Vec<u8>> = row.get("hash");
         let hash = match hash {
             None => None,
-            Some(h) if h.len() == 8 => {
-                let mut bytes: [u8; 8] = [0; 8];
-                bytes.copy_from_slice(&h);
-                Some(u64::from_be_bytes(bytes))
-            }
-            Some(h) => {
-                bail!("expected hash to be 8 bytes, but it is {} bytes", h.len())
-            }
+            Some(h) => Some(blob_to_hash(&h)?),
         };
 
-        let get_u64 = |name: &str| -> u64 {
+        let get_u64 = |name: &str| -> Result<u64> {
             let val: i64 = row.get(name);
-            val as u64
+            Ok(u64::try_from(val)?)
         };
 
         Ok(FileRow {
             file_path: row.get("path"),
-            file_size: get_u64("size"),
+            file_size: get_u64("size")?,
+            modified_at: {
+                let ts = get_u64("modified_at")?;
+                UNIX_EPOCH + Duration::from_secs(ts)
+            },
             content_hash: hash,
-            replication_factor: get_u64("replication_factor"),
+            replication_factor: get_u64("replication_factor")?,
         })
     }
 
@@ -96,6 +97,26 @@ impl File {
                 .await?
                 .transpose()?;
         Ok(res)
+    }
+
+    pub async fn create_file(
+        conn: &mut SqliteConnection,
+        path: String,
+        replication_factor: u64,
+    ) -> Result<FileRow> {
+        query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, TRUE, 0, ?2)")
+            .bind(path.as_str())
+            .bind(replication_factor as i64)
+            .execute(conn)
+            .await?;
+
+        Ok(FileRow {
+            file_path: path,
+            file_size: 0,
+            modified_at: SystemTime::now(),
+            content_hash: None,
+            replication_factor,
+        })
     }
 }
 

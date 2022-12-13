@@ -20,6 +20,7 @@ use crate::{
     db::{db, file::File, schema::Schema},
     db_conn,
     operation::ClientToNodeOperation,
+    util::davpath_to_pathbuf,
     NETWORK, RAFT,
 };
 
@@ -152,7 +153,7 @@ impl DavFileSystem for WebdavFilesystem {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::CreateDir {
                 // REVIEW: does `as_pathbuf()` give the correct path?
-                path: path.as_pathbuf(),
+                path: davpath_to_pathbuf(path),
             })
             .await?;
             Ok(())
@@ -180,7 +181,7 @@ impl DavFileSystem for WebdavFilesystem {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::RemoveDir {
                 // REVIEW: does `as_pathbuf()` give the correct path?
-                path: path.as_pathbuf(),
+                path: davpath_to_pathbuf(path),
             })
             .await?;
 
@@ -193,7 +194,7 @@ impl DavFileSystem for WebdavFilesystem {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::RemoveFile {
                 // REVIEW: does `as_pathbuf()` give the correct path?
-                path: path.as_pathbuf(),
+                path: davpath_to_pathbuf(path),
             })
             .await?;
             Ok(())
@@ -205,8 +206,8 @@ impl DavFileSystem for WebdavFilesystem {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::MoveFile {
                 // REVIEW: does `as_pathbuf()` give the correct path?
-                old_path: from.as_pathbuf(),
-                new_path: to.as_pathbuf(),
+                old_path: davpath_to_pathbuf(from),
+                new_path: davpath_to_pathbuf(to),
             })
             .await?;
             Ok(())
@@ -218,8 +219,8 @@ impl DavFileSystem for WebdavFilesystem {
             let raft = RAFT.get().unwrap();
             raft.client_write(ClientToNodeOperation::CopyFile {
                 // REVIEW: does `as_pathbuf()` give the correct path?
-                src_path: from.as_pathbuf(),
-                dst_path: to.as_pathbuf(),
+                src_path: davpath_to_pathbuf(from),
+                dst_path: davpath_to_pathbuf(to),
             })
             .await?;
             Ok(())

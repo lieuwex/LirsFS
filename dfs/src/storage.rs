@@ -97,7 +97,7 @@ impl AppRaftStorage {
                 // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
 
                 // To spread read load, "randomly" select a keeper based on the id of this operation
-                let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path).await?
+                let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path.as_std_path()).await?
 
                 // TODO perhaps return a more structured error so the webdav client can notify a user a file has been lost
                 // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
@@ -125,7 +125,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     type ShutdownError = AppError;
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
-        todo!()
+        Ok(RaftLog::get_last_membership(db_conn!())
+            .await?
+            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id())))
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {

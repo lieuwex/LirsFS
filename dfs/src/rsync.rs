@@ -1,6 +1,5 @@
-use std::path::{Path, PathBuf};
-
 use anyhow::{anyhow, Result};
+use camino::Utf8Path;
 use tokio::process::Command;
 
 use crate::{util, CONFIG};
@@ -16,8 +15,8 @@ impl Rsync {
         todo!()
     }
 
-    pub async fn copy_from(remote_host: String, filename: &Path) -> Result<()> {
-        let full_path = util::prepend_fs_dir(filename);
+    pub async fn copy_from(remote_host: String, filename: &Utf8Path) -> Result<()> {
+        let full_path = util::prepend_fs_dir(filename.as_std_path());
 
         let output = Command::new("rsync")
             .arg(format!("{remote_host}:{full_path}"))
