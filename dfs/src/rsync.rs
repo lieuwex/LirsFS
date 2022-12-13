@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use tokio::process::Command;
 
-use crate::CONFIG;
+use crate::{util, CONFIG};
 
 pub struct Rsync {}
 
@@ -17,12 +17,7 @@ impl Rsync {
     }
 
     pub async fn copy_from(remote_host: String, filename: &Path) -> Result<()> {
-        let mut full_path = CONFIG.file_dir.clone();
-        full_path.push(filename);
-        let full_path = full_path
-            .to_str()
-            .expect("Error: Non-UTF8 characters in filename")
-            .to_owned();
+        let full_path = util::prepend_fs_dir(filename);
 
         let output = Command::new("rsync")
             .arg(format!("{remote_host}:{full_path}"))
