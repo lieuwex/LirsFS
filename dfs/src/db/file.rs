@@ -81,9 +81,9 @@ impl File {
 
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<FileRow>> {
         let res: Vec<FileRow> = query("SELECT id, path, size, hash, replication_factor FROM files")
-            .map(|r| Self::map_row(r))
+            .map(Self::map_row)
             .fetch(conn)
-            .map(|r| flatten_result(r))
+            .map(flatten_result)
             .try_collect()
             .await?;
         Ok(res)
@@ -93,7 +93,7 @@ impl File {
         let res: Option<FileRow> =
             query("SELECT id, path, size, hash, replication_factor FROM files WHERE path = ?1")
                 .bind(path)
-                .map(|r| Self::map_row(r))
+                .map(Self::map_row)
                 .fetch_optional(conn)
                 .await?
                 .transpose()?;
