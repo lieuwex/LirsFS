@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, SqliteConnection};
 
@@ -21,15 +22,16 @@ pub struct LastAppliedEntries;
 impl LastAppliedEntries {
     pub async fn get(
         conn: &mut SqliteConnection,
-        node_name: String,
+        node_id: NodeId,
     ) -> Result<Option<LastAppliedEntry>> {
+        let node_id = node_id as i64;
         query!(
             "
             SELECT *
             FROM last_applied_entries
-            WHERE node_name = ?;
+            WHERE node_id = ?;
         ",
-            node_name
+            node_id
         )
         .fetch_optional(conn)
         .await?
@@ -45,19 +47,20 @@ impl LastAppliedEntries {
 
     pub async fn set(
         conn: &mut SqliteConnection,
-        node_name: String,
-        id: RaftLogId,
+        node_id: NodeId,
+        entry_id: RaftLogId,
         contents: &AppClientResponse,
     ) -> Result<()> {
-        let id = id as i64;
+        let node_id = node_id as i64;
+        let entry_id = entry_id as i64;
         let contents_serialized = bincode::serialize(contents)?;
         query!(
             "
-            INSERT INTO last_applied_entries
+            INSERT INTO last_applied_entries (node_id, last_entry_id, last_entry_contents)
             VALUES(?, ?, ?)
         ",
-            node_name,
-            id,
+            node_id,
+            entry_id,
             contents_serialized
         )
         .execute(conn)
