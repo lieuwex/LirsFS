@@ -62,11 +62,8 @@ async fn pinger(
     'ping: loop {
         if matches!(state, ConnectionState::Ready) {
             interval.tick().await;
-            time::sleep({
-                let ms = thread_rng().gen_range(0..=(5 * 1000));
-                Duration::from_millis(ms)
-            })
-            .await;
+            let dur = thread_rng().gen_range(Duration::ZERO..=(Duration::from_secs(5)));
+            time::sleep(dur).await;
         }
 
         let mut lock = client.write().await;
