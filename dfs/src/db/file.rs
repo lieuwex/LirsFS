@@ -15,7 +15,6 @@ use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRow {
-    pub file_id: i64,
     pub file_path: String,
     pub file_size: u64,
     pub content_hash: Option<u64>,
@@ -71,7 +70,6 @@ impl File {
         };
 
         Ok(FileRow {
-            file_id: row.get("id"),
             file_path: row.get("path"),
             file_size: get_u64("size"),
             content_hash: hash,
