@@ -3,6 +3,7 @@ use crate::{
     client_res::AppClientResponse,
     db::{
         self, curr_snapshot, db,
+        keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
         raftlog::{RaftLog, RaftLogId},
         schema::Schema,
@@ -10,6 +11,7 @@ use crate::{
     },
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
+    rsync::Rsync,
     CONFIG,
 };
 use anyhow::{anyhow, Result};
@@ -73,7 +75,38 @@ impl AppRaftStorage {
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
     ) -> Result<AppClientResponse> {
-        todo!()
+        use NodeToNodeOperation::*;
+        match op {
+            NodeLost {
+                lost_node,
+                last_contact,
+            } => {
+                todo!("Update membership config to remove node, `nodes` and `keepers` table so readers won't try a dead node. Then return the last known contact time to the client.")
+            }
+            DeleteReplica { path, node_id } => todo!(),
+
+            // This node asks a keeper node for the file, then replicates the file on its own filesystem
+            StoreReplica { path, node_id } => {
+                // To spread read load, "randomly" select a keeper based on the id of this operation
+                let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path).await?
+
+                // TODO perhaps return a more structured error so the webdav client can notify a user a file has been lost
+                // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
+                // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
+                .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
+
+                Rsync::copy_from(keeper, path).await?;
+                Ok(AppClientResponse(Ok("".into())))
+            }
+            FileCommitFail {
+                serial,
+                failure_reason,
+            } => todo!(),
+
+            FileCommitSuccess { serial, hash } => todo!(),
+            NodeJoin { node_id } => todo!(),
+            NodeLeft { node_id } => todo!(),
+        }
     }
 }
 
