@@ -83,7 +83,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     type ShutdownError = AppError;
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
-        todo!()
+        Ok(RaftLog::get_last_membership(db_conn!())
+            .await?
+            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id())))
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {
