@@ -1,6 +1,6 @@
 use crate::db::keepers::Keepers;
 
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 
 use async_raft::NodeId;
 use camino::Utf8PathBuf;
@@ -67,6 +67,10 @@ pub enum NodeToNodeOperation {
         serial: u64,
         /// XxHash64 value for the whole file content at this point.
         hash: u64,
+        /// The node this file was committed on
+        node_id: NodeId,
+        /// Path of the file that was committed
+        path: Utf8PathBuf,
     },
 }
 

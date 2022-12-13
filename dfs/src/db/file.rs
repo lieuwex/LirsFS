@@ -2,6 +2,7 @@
 
 use std::{
     borrow::Borrow,
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -10,7 +11,7 @@ use super::{
     Database,
 };
 use crate::util::{blob_to_hash, flatten_result};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -23,6 +24,7 @@ pub struct FileRow {
     pub modified_at: SystemTime,
     pub content_hash: Option<u64>,
     pub replication_factor: u64,
+    pub is_file: bool,
 }
 
 impl DavDirEntry for FileRow {
@@ -75,6 +77,7 @@ impl File {
             },
             content_hash: hash,
             replication_factor: get_u64("replication_factor")?,
+            is_file: row.get("is_file"),
         })
     }
 
@@ -116,7 +119,28 @@ impl File {
             modified_at: SystemTime::now(),
             content_hash: None,
             replication_factor,
+            is_file: true,
         })
+    }
+
+    pub async fn update_file_hash(
+        conn: &mut SqliteConnection,
+        path: &str,
+        hash: Option<u64>,
+    ) -> Result<()> {
+        let hash = hash.map(|h| h.to_be_bytes().to_vec());
+        query!(
+            "
+            UPDATE files
+            SET hash = ?
+            WHERE path = ?
+        ",
+            hash,
+            path
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
     }
 }
 

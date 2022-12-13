@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use async_raft::NodeId;
+use camino::Utf8PathBuf;
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -17,12 +18,12 @@ pub struct KeepersRow {
     pub id: i64,
     pub path: PathBuf,
     pub node_id: NodeId,
-
     pub hash: u64,
 }
 
 pub struct Keepers;
 
+// TODO: Fix duplication in handling UTF8 errors in file paths
 impl Keepers {
     pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
@@ -59,7 +60,7 @@ impl Keepers {
 
         let record = query!(
             "
-            SELECT *
+            SELECT ssh_host
             FROM nodes
             WHERE id IN (
                 SELECT node_id
@@ -103,6 +104,25 @@ impl Keepers {
             .try_collect()
             .await?;
         Ok(res)
+    }
+
+    pub async fn add_keeper_for_file(
+        conn: &mut SqliteConnection,
+        file: &str,
+        node_id: NodeId,
+    ) -> Result<()> {
+        let node_id = node_id as i64;
+        query!(
+            "
+            INSERT INTO keepers(path, node_id)
+            VALUES (?, ?);
+        ",
+            file,
+            node_id
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
     }
 }
 

@@ -3,6 +3,7 @@ use crate::{
     client_res::AppClientResponse,
     db::{
         self, curr_snapshot, db,
+        file::File,
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
         raftlog::{RaftLog, RaftLogId},
@@ -26,7 +27,7 @@ use futures::TryStreamExt;
 use sqlx::{query, SqliteConnection};
 use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::OpenOptions;
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -83,7 +84,15 @@ impl AppRaftStorage {
             } => {
                 todo!("Update membership config to remove node, `nodes` and `keepers` table so readers won't try a dead node. Then return the last known contact time to the client.")
             }
-            DeleteReplica { path, node_id } => todo!(),
+            DeleteReplica { path, node_id } => {
+                todo!();
+                // if self.get_own_id() != *node_id {
+                //     return Ok(AppClientResponse(Ok(format!(
+                //         "I (node_id: {}) am not the target of this operation",
+                //         node_id
+                //     ))));
+                // }
+            }
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
             StoreReplica { path, node_id } => {
@@ -97,14 +106,14 @@ impl AppRaftStorage {
                 // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
 
                 // To spread read load, "randomly" select a keeper based on the id of this operation
-                let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path.as_std_path()).await?
+                let keeper = Keepers::get_random_keeper_for_file(conn, path.as_std_path()).await?
 
                 // TODO perhaps return a more structured error so the webdav client can notify a user a file has been lost
                 // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
                 Rsync::copy_from(keeper, path).await?;
-
+                Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
             FileCommitFail {
@@ -112,7 +121,16 @@ impl AppRaftStorage {
                 failure_reason,
             } => todo!(),
 
-            FileCommitSuccess { serial, hash } => todo!(),
+            FileCommitSuccess {
+                serial,
+                hash,
+                node_id,
+                path,
+            } => {
+                Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
+                File::update_file_hash(conn, path.as_str(), Some(*hash)).await?;
+                Ok(AppClientResponse(Ok("".into())))
+            }
             NodeJoin { node_id } => todo!(),
             NodeLeft { node_id } => todo!(),
         }
@@ -121,7 +139,7 @@ impl AppRaftStorage {
 
 #[async_trait]
 impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
-    type Snapshot = File;
+    type Snapshot = tokio::fs::File;
     type ShutdownError = AppError;
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
@@ -378,7 +396,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             membership,
         } = SnapshotMeta::get(&mut curr_snapshot().await?).await?;
 
-        let file = match File::open(&CONFIG.file_registry_snapshot).await {
+        let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => panic!(
