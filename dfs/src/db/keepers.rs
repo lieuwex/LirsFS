@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use async_raft::NodeId;
+use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, SqliteConnection};
 
@@ -34,11 +35,10 @@ impl Keepers {
         ",
             filepath
         )
-        .fetch_all(conn)
-        .await?
-        .iter()
         .map(|record| record.node_id as NodeId)
-        .collect();
+        .fetch(conn)
+        .try_collect()
+        .await?;
         Ok(keeper_nodes)
     }
 
