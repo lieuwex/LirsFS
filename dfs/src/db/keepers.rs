@@ -18,11 +18,11 @@ pub struct KeepersRow {
 pub struct Keepers;
 
 impl Keepers {
-    pub async fn get_keepers_for_file(
+    pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
-        filepath: &Path,
+        file: &Path,
     ) -> Result<Vec<NodeId>> {
-        let filepath = filepath
+        let filepath = file
             .to_str()
             .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
 
@@ -40,6 +40,39 @@ impl Keepers {
         .map(|record| record.node_id as NodeId)
         .collect();
         Ok(keeper_nodes)
+    }
+
+    /// Return the ssh host for a keeper of the file indicated by `path`,
+    /// or `None` if there is no keeper for this file.
+    pub async fn get_random_keeper_for_file(
+        conn: &mut SqliteConnection,
+        file: &Path,
+    ) -> Result<Option<String>> {
+        let filepath = file
+            .to_str()
+            .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
+
+        let record = query!(
+            "
+            SELECT *
+            FROM nodes
+            WHERE id IN (
+                SELECT node_id
+                FROM keepers
+                WHERE path = ?
+                ORDER BY RANDOM()
+                LIMIT 1
+            );
+        ",
+            filepath
+        )
+        .fetch_optional(conn)
+        .await?;
+        if let Some(record) = record {
+            Ok(Some(record.ssh_host))
+        } else {
+            Ok(None)
+        }
     }
 }
 
