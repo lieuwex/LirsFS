@@ -87,6 +87,13 @@ impl AppRaftStorage {
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
             StoreReplica { path, node_id } => {
+                if self.get_own_id() != *node_id {
+                    return Ok(AppClientResponse(Ok(format!(
+                        "I (node_id: {}) am not the target of this operation",
+                        node_id
+                    ))));
+                }
+
                 // To spread read load, "randomly" select a keeper based on the id of this operation
                 let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path).await?
 
