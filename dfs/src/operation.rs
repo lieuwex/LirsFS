@@ -42,7 +42,7 @@ pub enum NodeToNodeOperation {
     /// Node left the network. This could be a temporary node failure.
     /// Once the Raft cluster's master deems it necessary, it will issue [NodeToNodeOperation::NodeLost],
     /// indicating that this node is considered lost permanently.
-    NodeLeave { node_id: NodeId },
+    NodeLeft { node_id: NodeId },
 
     /// Raft cluster master considers the node `lost_node` to be lost permanently.
     /// The master will then issue the operations necessary to ensure replication factor of all files is respected.
