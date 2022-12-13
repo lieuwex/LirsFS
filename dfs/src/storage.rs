@@ -63,11 +63,18 @@ impl AppRaftStorage {
         &self,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
-    ) {
+    ) -> Result<AppClientResponse> {
+        todo!()
     }
 
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
-    async fn handle_node_operation(&self, op: &NodeToNodeOperation, conn: &mut SqliteConnection) {}
+    async fn handle_node_operation(
+        &self,
+        op: &NodeToNodeOperation,
+        conn: &mut SqliteConnection,
+    ) -> Result<AppClientResponse> {
+        todo!()
+    }
 }
 
 #[async_trait]
@@ -126,7 +133,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         match stop {
             Some(stop) => RaftLog::delete_range(db_conn!(), start, stop).await,
             None => RaftLog::delete_from(db_conn!(), start).await,
-        };
+        }?;
         Ok(())
     }
 
@@ -148,7 +155,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
         // so we don't apply the entry twice.
         if let Some(LastAppliedEntry { id, contents }) =
-            LastAppliedEntries::get(db_conn!(), data.client).await?
+            LastAppliedEntries::get(db_conn!(), data.client.clone()).await?
         {
             if id == data.serial {
                 return Ok(contents);
@@ -156,34 +163,51 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         }
 
         let mut tx = db().begin().await?;
-        match &data.operation {
+        let response = match &data.operation {
             Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
             Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
-        };
+        }?;
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
-        todo!("Record the response to this entry")
-        tx.commit().await;
-        todo!("Better client responses");
-        Ok(AppClientResponse(Ok("".into())))
+        LastAppliedEntries::set(&mut tx, data.client.clone(), *index, &response).await?;
+        tx.commit().await?;
+        Ok(response)
     }
 
     async fn replicate_to_state_machine(
         &self,
         entries: &[(&u64, &AppClientRequest)],
     ) -> Result<()> {
+        let mut tx = db().begin().await?;
         let mut entries = entries.iter().peekable();
+        let mut last_entry_id = None;
         while let Some(&(id, data)) = entries.next() {
             let is_last_entry = entries.peek().is_none();
-            let last_entry_id = is_last_entry.then_some(*id);
+            last_entry_id = is_last_entry.then_some(*id);
 
-            // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
-            match &data.operation {
-                Operation::FromClient(op) => self.handle_client_operation(op, last_entry_id).await,
-                Operation::FromNode(op) => self.handle_node_operation(op, last_entry_id).await,
-            };
+            // See if this entry has already been applied, and if so, don't apply it again.
+            if let Some(LastAppliedEntry { id, .. }) =
+                LastAppliedEntries::get(db_conn!(), data.client.clone()).await?
+            {
+                if id == data.serial {
+                    continue;
+                }
+            }
+
+            let response = match &data.operation {
+                Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
+                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
+            }?;
+            // Save the response to applying this entry, but don't return it
+            LastAppliedEntries::set(&mut tx, data.client.clone(), *id, &response).await?;
         }
 
-        todo!("handle responses to client");
+        // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
+        if let Some(last_entry_id) = last_entry_id {
+            // N.B. this should always happen unless `entries` contained 0 entries
+            SnapshotMeta::set_last_applied_entry(&mut tx, last_entry_id).await?;
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -217,7 +241,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         let snapshot = Box::new(snapshot);
 
         // Delete the Raft log entries up until the last applied log
-        RaftLog::delete_range(&mut tx, 0, last_applied_log).await;
+        RaftLog::delete_range(&mut tx, 0, last_applied_log).await?;
 
         tx.commit().await?;
 
