@@ -24,7 +24,7 @@ use async_raft::{
 };
 use futures::TryStreamExt;
 use sqlx::{query, SqliteConnection};
-use std::{borrow::BorrowMut, fmt::Display, io::ErrorKind, iter::once, sync::Arc};
+use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
 use tokio::fs::{File, OpenOptions};
 
@@ -93,6 +93,8 @@ impl AppRaftStorage {
                         node_id
                     ))));
                 }
+                // TODO: In case of `rsync` errors, try other keepers until we find one that works
+                // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
 
                 // To spread read load, "randomly" select a keeper based on the id of this operation
                 let keeper = Keepers::get_random_keeper_for_file(db_conn!(), path).await?
@@ -101,8 +103,8 @@ impl AppRaftStorage {
                 // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
-
                 Rsync::copy_from(keeper, path).await?;
+
                 Ok(AppClientResponse(Ok("".into())))
             }
             FileCommitFail {
