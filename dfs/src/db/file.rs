@@ -2,17 +2,16 @@
 
 use std::time::SystemTime;
 
-use anyhow::{bail, Result};
-use futures::prelude::*;
-use serde::{Deserialize, Serialize};
-use sqlx::{query, sqlite::SqliteRow, Row};
-use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
-
 use super::{
     schema::{Schema, SqlxQuery},
     Database,
 };
 use crate::util::flatten_result;
+use anyhow::{bail, Result};
+use futures::prelude::*;
+use serde::{Deserialize, Serialize};
+use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
+use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRow {
@@ -49,9 +48,9 @@ impl DavMetaData for FileRow {
 }
 
 #[derive(Clone, Debug)]
-pub struct File<'a>(&'a Database);
+pub struct File;
 
-impl<'a> File<'a> {
+impl File {
     fn map_row(row: SqliteRow) -> Result<FileRow> {
         let hash: Option<Vec<u8>> = row.get("hash");
         let hash = match hash {
@@ -80,36 +79,32 @@ impl<'a> File<'a> {
         })
     }
 
-    pub async fn get_all(&self) -> Result<Vec<FileRow>> {
+    pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<FileRow>> {
         let res: Vec<FileRow> = query("SELECT id, path, size, hash, replication_factor FROM files")
-            .map(|r| Self::map_row(r))
-            .fetch(self.0.as_ref())
-            .map(|r| flatten_result(r))
+            .map(Self::map_row)
+            .fetch(conn)
+            .map(flatten_result)
             .try_collect()
             .await?;
         Ok(res)
     }
 
-    pub async fn get_by_path(&self, path: &str) -> Result<Option<FileRow>> {
+    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Option<FileRow>> {
         let res: Option<FileRow> =
             query("SELECT id, path, size, hash, replication_factor FROM files WHERE path = ?1")
                 .bind(path)
-                .map(|r| Self::map_row(r))
-                .fetch_optional(self.0.as_ref())
+                .map(Self::map_row)
+                .fetch_optional(conn)
                 .await?
                 .transpose()?;
         Ok(res)
     }
 }
 
-impl<'a> Schema<'a> for File<'a> {
+impl Schema for File {
     const TABLENAME: &'static str = "files";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_files.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }

@@ -1,11 +1,12 @@
+use anyhow::{anyhow, Result};
 use async_raft::raft::MembershipConfig;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Pool, Sqlite, SqliteConnection, SqlitePool};
+use sqlx::{query, SqliteConnection};
 
 use super::{
-    raftlog::{RaftLogId, RaftLogTerm},
+    errors::raftlog_deserialize_error,
+    raftlog::{RaftLogEntry, RaftLogId, RaftLogTerm},
     schema::Schema,
-    Database,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,38 +17,54 @@ pub struct SnapshotMetaRow {
 }
 
 #[derive(Clone, Debug)]
-pub struct SnapshotMeta<'a>(&'a Database);
+pub struct SnapshotMeta;
 
-impl<'a> SnapshotMeta<'a> {
-    pub async fn get(&self) -> SnapshotMetaRow {
+impl SnapshotMeta {
+    pub async fn get(conn: &mut SqliteConnection) -> Result<SnapshotMetaRow> {
         let record = query!(
             "
             SELECT * 
             FROM snapshot_meta;
         "
         )
-        .fetch_one(self.0.as_ref())
+        .fetch_one(conn)
         .await
-        .unwrap_or_else(|err| panic!("Error retrieving snapshot data from db: {:#?}", err));
+        .map_err(|err| anyhow!("Error retrieving snapshot data from db: {:#?}", err))?;
 
-        SnapshotMetaRow {
+        let membership =
+            bincode::deserialize(&record.membership).map_err(raftlog_deserialize_error)?;
+
+        Ok(SnapshotMetaRow {
             term: record.term as RaftLogTerm,
             last_applied_log: record.last_applied_log as RaftLogId,
-            // TODO: Better error handling
-            membership: bincode::deserialize(&record.membership)
-                .expect("Deserializaton error for membership"),
-        }
+            membership,
+        })
+    }
+
+    pub async fn set_last_applied_entry(
+        conn: &mut SqliteConnection,
+        entry: RaftLogId,
+    ) -> Result<()> {
+        let entry = entry as i64;
+        query!(
+            "
+            UPDATE snapshot_meta
+            SET last_applied_log = ?
+            WHERE id = 1;
+        ",
+            entry
+        )
+        .execute(conn)
+        .await?;
+
+        Ok(())
     }
 }
 
-impl<'a> Schema<'a> for SnapshotMeta<'a> {
+impl Schema for SnapshotMeta {
     const TABLENAME: &'static str = "snapshot_meta";
 
     fn create_table_query() -> super::schema::SqlxQuery {
         query(include_str!("../../sql/create_snapshot_meta.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }

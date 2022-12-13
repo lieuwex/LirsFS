@@ -3,7 +3,7 @@ use super::{
     Database,
 };
 use async_raft::async_trait::async_trait;
-use sqlx::{sqlite::SqliteQueryResult, Executor};
+use sqlx::{sqlite::SqliteQueryResult, SqliteConnection};
 
 pub type SqlxResult = Result<SqliteQueryResult, sqlx::Error>;
 
@@ -11,28 +11,32 @@ pub type SqlxQuery =
     sqlx::query::Query<'static, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'static>>;
 
 #[async_trait]
-pub trait Schema<'a> {
+pub trait Schema {
     const TABLENAME: &'static str;
 
     fn create_table_query() -> SqlxQuery;
-
-    fn with(db: &'a Database) -> Self;
 }
 
-async fn create_table<'a, 'b, T>(exec: &'a Database) -> SqliteQueryResult
+async fn create_table<T>(exec: &mut SqliteConnection) -> SqliteQueryResult
 where
-    T: Schema<'b>,
+    T: Schema,
 {
     T::create_table_query()
-        .execute(&exec.pool)
+        .execute(exec)
         .await
         .unwrap_or_else(|err| panic!("Error creating table `{}`: {}", T::TABLENAME, err))
 }
 
-pub async fn create_all_tables(exec: &Database) {
-    create_table::<File>(exec).await;
-    create_table::<Node>(exec).await;
-    create_table::<Keepers>(exec).await;
-    create_table::<RaftLog>(exec).await;
-    create_table::<SnapshotMeta>(exec).await;
+pub async fn create_all_tables(db: &Database) {
+    let mut conn = db
+        .pool
+        .acquire()
+        .await
+        .expect("couldn't acquire connection");
+
+    create_table::<File>(&mut conn).await;
+    create_table::<Node>(&mut conn).await;
+    create_table::<Keepers>(&mut conn).await;
+    create_table::<RaftLog>(&mut conn).await;
+    create_table::<SnapshotMeta>(&mut conn).await;
 }

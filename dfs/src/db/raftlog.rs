@@ -1,15 +1,15 @@
+use anyhow::{anyhow, Result};
 use async_raft::{
     raft::{Entry, EntryConfigChange, EntryPayload, MembershipConfig},
     AppData,
 };
-use sqlx::{query, Pool, QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{query, QueryBuilder, Sqlite, SqliteConnection};
 
 use crate::client_req::AppClientRequest;
 
 use super::{
-    db,
+    errors::raftlog_deserialize_error,
     schema::{Schema, SqlxQuery},
-    Database,
 };
 
 /// SQLite does not handle u64 types; only i64.
@@ -54,10 +54,16 @@ pub struct RaftLogRow {
 /// You interact with the table through associated methods that accept [RaftLogId]s and [Entry<AppClientRequest>]s.
 /// Use these associated methods to perform CRUD operations.
 #[derive(Clone, Debug)]
-pub struct RaftLog<'a>(&'a Database);
+pub struct RaftLog;
 
-impl<'a> RaftLog<'a> {
-    pub async fn delete_range(&self, from: RaftLogId, to: RaftLogId) {
+impl RaftLog {
+    /// Delete all Raft log entries in the provided range [from, to) in the database given by `conn`.
+    /// Returns the amount of entries deleted.
+    pub async fn delete_range(
+        conn: &mut SqliteConnection,
+        from: RaftLogId,
+        to: RaftLogId,
+    ) -> Result<u64> {
         let from = from as i64;
         let to = to as i64;
         query!(
@@ -67,20 +73,25 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .execute(self.0.as_ref())
+        .execute(conn)
         .await
-        .unwrap_or_else(|err| {
-            panic!(
-                "Could not delete id range {}-{} from {}: {:?}",
-                from,
-                to,
-                Self::TABLENAME,
-                err
-            )
-        });
+        .map_or_else(
+            |err| {
+                Err(anyhow!(
+                    "Could not delete id range {}-{} from {}: {:?}",
+                    from,
+                    to,
+                    Self::TABLENAME,
+                    err
+                ))
+            },
+            |res| Ok(res.rows_affected()),
+        )
     }
 
-    pub async fn delete_from(&self, from: RaftLogId) {
+    /// Deletes all Raft log entries more than or equal to the provided id in the database given by `conn`.
+    /// Returns the amount of entries deleted.
+    pub async fn delete_from(conn: &mut SqliteConnection, from: RaftLogId) -> Result<u64> {
         let from = from as i64;
         query!(
             "
@@ -89,22 +100,28 @@ impl<'a> RaftLog<'a> {
         ",
             from
         )
-        .execute(self.0.as_ref())
+        .execute(conn)
         .await
-        .unwrap_or_else(|err| {
-            panic!(
-                "Could not delete from id {} from {}: {:?}",
-                from,
-                Self::TABLENAME,
-                err
-            )
-        });
+        .map_or_else(
+            |err| {
+                Err(anyhow!(
+                    "Could not delete from id {} from {}: {:?}",
+                    from,
+                    Self::TABLENAME,
+                    err
+                ))
+            },
+            |res| Ok(res.rows_affected()),
+        )
     }
 
-    /// Inserts the given Raft log entries into the SQLite database.
-    pub async fn insert(&self, entries: &[Entry<AppClientRequest>]) {
+    /// Insert the given Raft log entries into the SQLite database given by `conn`.
+    pub async fn insert<'b, I>(conn: &mut SqliteConnection, entries: I)
+    where
+        I: IntoIterator<Item = &'b Entry<AppClientRequest>>,
+    {
         let mut query = QueryBuilder::<Sqlite>::new("INSERT INTO raftlog (id,term,entry) ");
-        let values_to_insert = entries.iter().map(RaftLogRow::from);
+        let values_to_insert = entries.into_iter().map(RaftLogRow::from);
 
         query.push_values(
             values_to_insert,
@@ -121,21 +138,21 @@ impl<'a> RaftLog<'a> {
                     .push_bind(entry_type as i64);
             },
         );
-        query
-            .build()
-            .execute(self.0.as_ref())
-            .await
-            .unwrap_or_else(|err| {
-                panic!(
-                    "Could not insert log entry/entries into {}: {:?}",
-                    Self::TABLENAME,
-                    err
-                )
-            });
+        query.build().execute(conn).await.unwrap_or_else(|err| {
+            panic!(
+                "Could not insert log entry/entries into {}: {:?}",
+                Self::TABLENAME,
+                err
+            )
+        });
     }
 
-    /// Retrieves the given range of raft log entries and serializes them into [Entry<AppClientRequest>]s.
-    pub async fn get_range(&self, from: RaftLogId, to: RaftLogId) -> Vec<Entry<AppClientRequest>> {
+    /// Retrieves the given range [from, to) of Raft log entries from the database given by `conn`, and serializes them into [Entry<AppClientRequest>]s.
+    pub async fn get_range(
+        conn: &mut SqliteConnection,
+        from: RaftLogId,
+        to: RaftLogId,
+    ) -> Result<Vec<Entry<AppClientRequest>>> {
         let from = from as i64;
         let to = to as i64;
         query!(
@@ -147,30 +164,37 @@ impl<'a> RaftLog<'a> {
             from,
             to
         )
-        .fetch_all(self.0.as_ref())
+        .fetch_all(conn)
         .await
-        .unwrap_or_else(|err| {
-            panic!(
-                "Could not get log entries with id {}-{} from {}: {}",
-                from,
-                to,
-                Self::TABLENAME,
-                err
-            )
-        })
+        .map_or_else(
+            |err| {
+                Err(anyhow!(
+                    "Could not get log entries with id {}-{} from {}: {}",
+                    from,
+                    to,
+                    Self::TABLENAME,
+                    err
+                ))
+            },
+            Ok,
+        )?
         .iter()
-        .map(|record| Entry {
-            term: record.term as RaftLogTerm,
-            index: record.id as RaftLogId,
-            // TODO: Better deserialization error handling
-            payload: bincode::deserialize(&record.entry).expect("Deserializing entry failed"),
+        .try_fold(Vec::new(), |mut vec, record| {
+            vec.push(Entry {
+                term: record.term as RaftLogTerm,
+                index: record.id as RaftLogId,
+                payload: bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?,
+            });
+            Ok(vec)
         })
-        .collect::<Vec<Entry<AppClientRequest>>>()
     }
 
     /// Retrieves the raft log entry with the given `id` and serializes it into [Entry<AppClientRequest>]s.
     /// Returns [None] if entry is not found.
-    pub async fn get_by_id(&self, id: RaftLogId) -> Option<Entry<AppClientRequest>> {
+    pub async fn get_by_id(
+        conn: &mut SqliteConnection,
+        id: RaftLogId,
+    ) -> Result<Option<Entry<AppClientRequest>>> {
         let id = id as i64;
         query!(
             "
@@ -180,28 +204,23 @@ impl<'a> RaftLog<'a> {
         ",
             id
         )
-        .fetch_optional(self.0.as_ref())
-        .await
-        .unwrap_or_else(|err| {
-            panic!(
-                "Could not get log entry with id {} from {}: {}",
-                id,
-                Self::TABLENAME,
-                err
-            )
-        })
+        .fetch_optional(conn)
+        .await?
         .map(|record| {
-            Entry {
+            Ok(Entry {
                 term: record.term as RaftLogTerm,
                 index: record.id as RaftLogId,
-                // TODO: Better deserialization error handling
-                payload: bincode::deserialize(&record.entry).expect("Deserializing entry failed"),
-            }
+                payload: bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?,
+            })
         })
+        .transpose()
     }
 
     /// Get the last known membership config before the specified Raft log entry
-    pub async fn get_last_membership_before(&self, before: RaftLogId) -> Option<MembershipConfig> {
+    pub async fn get_last_membership_before(
+        conn: &mut SqliteConnection,
+        before: RaftLogId,
+    ) -> Result<Option<MembershipConfig>> {
         let before = before as i64;
         query!(
             "
@@ -212,37 +231,48 @@ impl<'a> RaftLog<'a> {
             RaftLogEntryType::ConfigChange as i64,
             before
         )
-        .fetch_one(self.0.as_ref())
+        .fetch_one(conn)
         .await
         .map_or_else(
             |err| match err {
-                sqlx::Error::RowNotFound => None,
-                _ => panic!("Error getting last config change: {:#?}", err),
+                sqlx::Error::RowNotFound => Ok(None),
+                _ => Err(anyhow!("Error getting last config change: {:#?}", err)),
             },
             |record| {
-                // TODO: Better deserialization error handling
                 let deserialized: Entry<AppClientRequest> =
-                    bincode::deserialize(&record.entry).expect("Deserialization error");
+                    bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?;
                 match deserialized.payload {
                     EntryPayload::ConfigChange(EntryConfigChange { membership }) => {
-                        Some(membership)
+                        Ok(Some(membership))
                     }
                     _ => unreachable!(),
                 }
             },
         )
     }
+
+    pub async fn get_last_log_entry_id_term(
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<(RaftLogId, RaftLogTerm)>> {
+        query!(
+            "
+            SELECT id, term
+            FROM raftlog
+            WHERE id=(SELECT MAX(id) FROM raftlog)
+        "
+        )
+        .fetch_optional(conn)
+        .await?
+        .map(|record| Ok((record.id as RaftLogId, record.term as RaftLogTerm)))
+        .transpose()
+    }
 }
 
-impl<'a> Schema<'a> for RaftLog<'a> {
+impl Schema for RaftLog {
     const TABLENAME: &'static str = "raftlog";
 
     fn create_table_query() -> SqlxQuery {
         query(include_str!("../../sql/create_raftlog.sql"))
-    }
-
-    fn with(db: &'a Database) -> Self {
-        Self(db)
     }
 }
 

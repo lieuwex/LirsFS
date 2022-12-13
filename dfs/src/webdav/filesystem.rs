@@ -1,11 +1,11 @@
-use std::time::SystemTime;
-
 use anyhow::{anyhow, Ok, Result};
 use async_raft::{raft::ClientWriteRequest, NodeId};
 use futures::prelude::*;
 use hyper::StatusCode;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::borrow::BorrowMut;
+use std::time::SystemTime;
 use tarpc::context::Context;
 use webdav_handler::{
     davpath::DavPath,
@@ -18,6 +18,7 @@ use webdav_handler::{
 use crate::{
     assume_client,
     db::{db, file::File, schema::Schema},
+    db_conn,
     operation::ClientToNodeOperation,
     NETWORK, RAFT,
 };
@@ -122,7 +123,7 @@ impl DavFileSystem for WebdavFilesystem {
         do_fs(move || async move {
             let path = path.to_string();
 
-            let files = File::with(db()).get_all().await?;
+            let files = File::get_all(db_conn!()).await?;
             let files = files
                 .into_iter()
                 .filter(move |f| f.file_path.starts_with(&path));
@@ -139,7 +140,7 @@ impl DavFileSystem for WebdavFilesystem {
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
         let path = path.to_string();
         do_fs(move || async move {
-            let file = File::with(db()).get_by_path(&path).await?;
+            let file = File::get_by_path(db_conn!(), &path).await?;
             let file = file.ok_or_else(|| anyhow!("file not found"))?;
             let res: Box<dyn DavMetaData> = Box::new(file);
             Ok(res)
@@ -162,7 +163,7 @@ impl DavFileSystem for WebdavFilesystem {
         do_fs(move || async move {
             let stream = self.read_dir(path, ReadDirMeta::None).await?;
             stream
-                .map(|f| Ok(f))
+                .map(Ok)
                 .try_for_each(|f| async move {
                     let name = todo!();
 
