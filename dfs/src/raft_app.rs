@@ -1,6 +1,9 @@
 use std::{fmt::Debug, ops::Deref};
 
-use async_raft::Raft;
+use async_raft::{
+    raft::{ClientWriteRequest, ClientWriteResponse},
+    ClientWriteError, Raft,
+};
 
 use crate::{
     client_req::AppClientRequest, client_res::AppClientResponse, network::AppRaftNetwork,
@@ -17,6 +20,15 @@ impl RaftApp {
         app: Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>,
     ) -> Self {
         Self { app }
+    }
+
+    pub async fn client_write<Req: Into<AppClientRequest>>(
+        &self,
+        request: Req,
+    ) -> Result<ClientWriteResponse<AppClientResponse>, ClientWriteError<AppClientRequest>> {
+        self.app
+            .client_write(ClientWriteRequest::new(request.into()))
+            .await
     }
 }
 
