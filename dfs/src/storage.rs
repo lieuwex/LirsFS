@@ -155,7 +155,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
         // so we don't apply the entry twice.
         if let Some(LastAppliedEntry { id, contents }) =
-            LastAppliedEntries::get(db_conn!(), data.client.clone()).await?
+            LastAppliedEntries::get(db_conn!(), data.client).await?
         {
             if id == data.serial {
                 return Ok(contents);
@@ -186,7 +186,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
             // See if this entry has already been applied, and if so, don't apply it again.
             if let Some(LastAppliedEntry { id, .. }) =
-                LastAppliedEntries::get(db_conn!(), data.client.clone()).await?
+                LastAppliedEntries::get(db_conn!(), data.client).await?
             {
                 if id == data.serial {
                     continue;
@@ -198,7 +198,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
             }?;
             // Save the response to applying this entry, but don't return it
-            LastAppliedEntries::set(&mut tx, data.client.clone(), *id, &response).await?;
+            LastAppliedEntries::set(&mut tx, data.client, *id, &response).await?;
         }
 
         // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
