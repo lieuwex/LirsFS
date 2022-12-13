@@ -7,7 +7,7 @@ use sqlx::query;
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Node {
+pub struct NodesRow {
     pub id: i32,
     pub ssh_host: String,
 }
