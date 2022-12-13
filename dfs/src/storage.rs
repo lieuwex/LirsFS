@@ -1,17 +1,5 @@
-use crate::{
-    client_req::AppClientRequest,
-    client_res::AppClientResponse,
-    db::{
-        self, curr_snapshot, db,
-        last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
-        raftlog::{RaftLog, RaftLogId},
-        schema::Schema,
-        snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
-    },
-    db_conn,
-    operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
-    CONFIG,
-};
+use std::{collections::HashMap, fmt::Display, io::ErrorKind, iter, sync::Arc};
+
 use anyhow::{anyhow, Result};
 use async_raft::{
     async_trait::async_trait,
@@ -20,11 +8,32 @@ use async_raft::{
     storage::{CurrentSnapshotData, HardState},
     Config, NodeId, RaftStorage,
 };
-use futures::TryStreamExt;
+use camino::Utf8PathBuf;
+use futures::prelude::*;
 use sqlx::{query, SqliteConnection};
-use std::{borrow::BorrowMut, fmt::Display, io::ErrorKind, iter::once, sync::Arc};
 use thiserror::Error;
-use tokio::fs::{File, OpenOptions};
+use tokio::{
+    fs::{File, OpenOptions},
+    sync::{
+        oneshot, MappedMutexGuard, Mutex, MutexGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard,
+        RwLock,
+    },
+};
+
+use crate::{
+    client_req::AppClientRequest,
+    client_res::AppClientResponse,
+    db::{
+        self, curr_snapshot, db,
+        last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
+        raftlog::RaftLog,
+        schema::Schema,
+        snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
+    },
+    db_conn,
+    operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
+    CONFIG,
+};
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -37,14 +46,99 @@ impl Display for AppError {
     }
 }
 
+#[derive(Debug, Default)]
+struct QueueItem {
+    lock: Arc<RwLock<()>>,
+    waiters: HashMap<u64, oneshot::Sender<()>>,
+}
+
+struct QueueHandle(pub(self) oneshot::Sender<()>);
+
+impl Drop for QueueHandle {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
+}
+
+#[derive(Debug)]
+struct Queue {
+    pub items: Mutex<HashMap<Utf8PathBuf, QueueItem>>,
+}
+
+impl Queue {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            items: Mutex::new(HashMap::new()),
+        })
+    }
+
+    async fn entry(&self, path: Utf8PathBuf) -> MappedMutexGuard<QueueItem> {
+        let lock = self.items.lock().await;
+        MutexGuard::try_map(lock, |items| Some(items.entry(path).or_default())).unwrap()
+    }
+
+    // TODO: we should submit get_write jobs on startup when knowingly waiting for jobs to finish
+    // in the `outstanding_writes` table.
+
+    /// Submit and hold a write lock for the file at `path` for write command `serial`.
+    /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
+    /// If you are not going to need the write handle, do:
+    /// ```
+    /// let _ = get_write().await?;
+    /// ```
+    pub async fn get_write(self: Arc<Self>, path: Utf8PathBuf, serial: u64) -> Result<QueueHandle> {
+        // channel to indicate that the caller of `get_write` is finished.
+        let (htx, hrx) = oneshot::channel();
+
+        let this = self.clone();
+        tokio::spawn(async move {
+            // channel to indicate that the write operation has been completed
+            let (ftx, frx) = oneshot::channel();
+
+            // we hold an entry lock for this whole task.
+            let write_lock: OwnedRwLockWriteGuard<()> = {
+                // hold a lock on the items, this is as shortlived as posisble so that other tasks
+                // can mark this write as finished! ...
+                let mut entry = this.entry(path).await;
+                assert!(entry.waiters.insert(serial, ftx).is_none());
+                // ... which is the reason we are holding a _owned_ guard here here.
+                entry.lock.clone().write_owned().await
+            };
+
+            // We wait for _both_ the channels to be done.
+            frx.await.unwrap();
+            hrx.await.unwrap();
+
+            // And finally drop it.
+            // This means that we will hold the write lock until both the caller of `get_write` is
+            // done and the write operation `serial` is comitted.
+            drop(write_lock);
+        });
+
+        Ok(QueueHandle(htx))
+    }
+
+    pub async fn get_read(&self, path: Utf8PathBuf) -> OwnedRwLockReadGuard<()> {
+        let lock = {
+            let entry = self.entry(path).await;
+            entry.lock.clone()
+        };
+        lock.read_owned().await
+    }
+}
+
 #[derive(Debug)]
 pub struct AppRaftStorage {
     config: Arc<Config>,
+    queue: Arc<Queue>,
 }
 
 impl AppRaftStorage {
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+        Self {
+            config,
+            queue: Queue::new(),
+        }
     }
 
     pub fn get_own_id(&self) -> NodeId {
@@ -61,15 +155,25 @@ impl AppRaftStorage {
     /// Handle a [ClientToNodeOperation], possibly mutating the file registry.
     async fn handle_client_operation(
         &self,
+        serial: u64,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
     ) -> Result<AppClientResponse> {
-        todo!()
+        match op {
+            ClientToNodeOperation::Write { path, .. } => {
+                self.queue.clone().get_write(path.clone(), serial).await?;
+
+                Ok(todo!())
+            }
+
+            _ => todo!(),
+        }
     }
 
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
     async fn handle_node_operation(
         &self,
+        serial: u64,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
     ) -> Result<AppClientResponse> {
@@ -166,8 +270,10 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         let mut tx = db().begin().await?;
         let response = match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
+            Operation::FromClient(op) => {
+                self.handle_client_operation(data.serial, op, &mut tx).await
+            }
+            Operation::FromNode(op) => self.handle_node_operation(data.serial, op, &mut tx).await,
         }?;
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
         LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
@@ -196,8 +302,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             }
 
             let response = match &data.operation {
-                Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
+                Operation::FromClient(op) => {
+                    self.handle_client_operation(data.serial, op, &mut tx).await
+                }
+                Operation::FromNode(op) => {
+                    self.handle_node_operation(data.serial, op, &mut tx).await
+                }
             }?;
             // Save the response to applying this entry, but don't return it
             LastAppliedEntries::set(&mut tx, data.client, *id, &response).await?;
@@ -321,7 +431,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         RaftLog::insert(
             &mut tx,
-            once(&Entry::new_snapshot_pointer(index, term, id, membership)),
+            iter::once(&Entry::new_snapshot_pointer(index, term, id, membership)),
         )
         .await;
 
