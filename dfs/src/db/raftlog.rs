@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_raft::{
-    raft::{Entry, EntryConfigChange, EntryPayload, MembershipConfig},
+    raft::{Entry, EntryConfigChange, EntryPayload, EntrySnapshotPointer, MembershipConfig},
     AppData,
 };
 use sqlx::{query, QueryBuilder, Sqlite, SqliteConnection};
@@ -30,6 +30,18 @@ pub enum RaftLogEntryType {
     Normal = 1,
     ConfigChange = 2,
     SnapShotPointer = 3,
+}
+
+impl From<i64> for RaftLogEntryType {
+    fn from(i: i64) -> Self {
+        match i {
+            0 => RaftLogEntryType::Blank,
+            1 => RaftLogEntryType::Normal,
+            2 => RaftLogEntryType::ConfigChange,
+            3 => RaftLogEntryType::SnapShotPointer,
+            _ => panic!("Invalid RaftLogEntryType: {}", i),
+        }
+    }
 }
 
 impl<T: AppData> From<&EntryPayload<T>> for RaftLogEntryType {
@@ -224,20 +236,17 @@ impl RaftLog {
         let before = before as i64;
         query!(
             "
-            SELECT *
+            SELECT entry
             FROM raftlog
             WHERE entry_type == ? AND id <= ?;
         ",
             RaftLogEntryType::ConfigChange as i64,
             before
         )
-        .fetch_one(conn)
-        .await
+        .fetch_optional(conn)
+        .await?
         .map_or_else(
-            |err| match err {
-                sqlx::Error::RowNotFound => Ok(None),
-                _ => Err(anyhow!("Error getting last config change: {:#?}", err)),
-            },
+            || Ok(None),
             |record| {
                 let deserialized: Entry<AppClientRequest> =
                     bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?;
@@ -249,6 +258,44 @@ impl RaftLog {
                 }
             },
         )
+    }
+
+    /// Get the last known membership. Will use membership of a snapshot if encountered.
+    pub async fn get_last_membership(
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<MembershipConfig>> {
+        let record = query!(
+            "
+            SELECT entry 
+            FROM 
+                raftlog,
+                (   
+                    SELECT MAX(id) as maxid
+                    FROM raftlog
+                    WHERE entry_type = ? OR entry_type = ?
+                )
+            WHERE id = maxid
+        ",
+            RaftLogEntryType::SnapShotPointer as i64,
+            RaftLogEntryType::ConfigChange as i64,
+        )
+        .fetch_optional(conn)
+        .await?;
+        if let Some(record) = record {
+            let entry: Entry<AppClientRequest> =
+                bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?;
+            match entry.payload {
+                EntryPayload::ConfigChange(EntryConfigChange { membership }) => {
+                    Ok(Some(membership))
+                }
+                EntryPayload::SnapshotPointer(EntrySnapshotPointer { membership, .. }) => {
+                    Ok(Some(membership))
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn get_last_log_entry_id_term(
