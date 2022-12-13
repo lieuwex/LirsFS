@@ -198,7 +198,7 @@ impl RaftLog {
         let id = id as i64;
         query!(
             "
-            SELECT * 
+            SELECT *
             FROM raftlog
             WHERE id == ?
         ",
@@ -254,17 +254,17 @@ impl RaftLog {
     pub async fn get_last_log_entry_id_term(
         conn: &mut SqliteConnection,
     ) -> Result<Option<(RaftLogId, RaftLogTerm)>> {
-        query!(
+        let res = query!(
             "
             SELECT id, term
             FROM raftlog
             WHERE id=(SELECT MAX(id) FROM raftlog)
         "
         )
+        .map(|record| (record.id as RaftLogId, record.term as RaftLogTerm))
         .fetch_optional(conn)
-        .await?
-        .map(|record| Ok((record.id as RaftLogId, record.term as RaftLogTerm)))
-        .transpose()
+        .await?;
+        Ok(res)
     }
 }
 
