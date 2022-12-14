@@ -6,7 +6,7 @@ use crate::{
         file::File,
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
-        raftlog::{RaftLog, RaftLogId},
+        raftlog::RaftLog,
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
     },

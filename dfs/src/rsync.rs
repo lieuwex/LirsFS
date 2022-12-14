@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use camino::Utf8Path;
 use tokio::process::Command;
 
-use crate::{util, CONFIG};
+use crate::util;
 
 pub struct Rsync {}
 
