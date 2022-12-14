@@ -18,6 +18,13 @@ where
 
 /// Prepend [Config]'s `fs_dir` to `file_path`, creating an absolute path to the file on any node in the filesystem.
 pub fn prepend_fs_dir(file_path: &Utf8Path) -> String {
+    // TODO: similar for non-unix platforms.
+    let file_path = if file_path.starts_with("/") {
+        file_path.strip_prefix("/").unwrap()
+    } else {
+        file_path
+    };
+
     let mut full_path = CONFIG.file_dir.clone();
     full_path.push(file_path);
     full_path.into_string()
