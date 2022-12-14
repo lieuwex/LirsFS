@@ -2,15 +2,16 @@ pub mod errors;
 pub mod file;
 pub mod keepers;
 pub mod last_applied_entries;
-pub mod node;
+pub mod nodes;
 pub mod outstanding_writes;
 pub mod raftlog;
 pub mod schema;
 pub mod snapshot_meta;
 
-use std::{borrow::Borrow, ops::Deref, path::Path};
+use std::{borrow::Borrow, ops::Deref};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+use camino::Utf8Path;
 use sqlx::{query, Connection, SqliteConnection, SqlitePool};
 
 use crate::{CONFIG, DB};
@@ -26,14 +27,12 @@ pub struct Database {
 }
 
 impl Database {
-    pub(self) fn map_path(path: &Path) -> Result<String> {
-        let path = path.to_str().ok_or_else(|| anyhow!("invalid path"))?;
-        let conn_str = format!("sqlite://{}", path);
-        Ok(conn_str)
+    pub(self) fn map_path(path: &Utf8Path) -> String {
+        format!("sqlite://{}", path.as_str())
     }
 
-    pub async fn from_path(path: &Path) -> Result<Self> {
-        let pool = SqlitePool::connect(&Self::map_path(path)?).await?;
+    pub async fn from_path(path: &Utf8Path) -> Result<Self> {
+        let pool = SqlitePool::connect(&Self::map_path(path)).await?;
         Ok(Database { pool })
     }
 }
@@ -63,7 +62,7 @@ macro_rules! db_conn {
 /// Open an SqliteConnection for the currently active snapshot
 pub async fn curr_snapshot() -> Result<SqliteConnection> {
     let path = &CONFIG.file_registry_snapshot;
-    let conn = SqliteConnection::connect(&Database::map_path(path)?).await?;
+    let conn = SqliteConnection::connect(&Database::map_path(path)).await?;
     Ok(conn)
 }
 
@@ -71,9 +70,7 @@ pub async fn curr_snapshot() -> Result<SqliteConnection> {
 /// Returns a read-only file handle to the created snapshot.
 pub async fn create_snapshot(snapshot_metadata: &SnapshotMetaRow) -> Result<tokio::fs::File> {
     let wip_snapshot_path = CONFIG.wip_file_registry_snapshot();
-    let wip_snapshot_path = wip_snapshot_path
-        .to_str()
-        .ok_or_else(|| anyhow!("invalid path string"))?;
+    let wip_snapshot_path = wip_snapshot_path.as_str();
 
     query!("VACUUM INTO ?", wip_snapshot_path)
         .execute(db().deref())

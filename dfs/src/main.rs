@@ -9,8 +9,6 @@ use std::{
 
 use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
-use client_req::AppClientRequest;
-use client_res::AppClientResponse;
 use db::Database;
 use filesystem::FileSystem;
 use network::AppRaftNetwork;
@@ -30,6 +28,7 @@ mod filesystem;
 mod network;
 mod operation;
 mod raft_app;
+mod rsync;
 mod server;
 mod service;
 mod storage;

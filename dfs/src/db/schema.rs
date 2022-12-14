@@ -1,5 +1,5 @@
 use super::{
-    file::File, keepers::Keepers, node::Node, raftlog::RaftLog, snapshot_meta::SnapshotMeta,
+    file::File, keepers::Keepers, nodes::Nodes, raftlog::RaftLog, snapshot_meta::SnapshotMeta,
     Database,
 };
 use async_raft::async_trait::async_trait;
@@ -35,7 +35,7 @@ pub async fn create_all_tables(db: &Database) {
         .expect("couldn't acquire connection");
 
     create_table::<File>(&mut conn).await;
-    create_table::<Node>(&mut conn).await;
+    create_table::<Nodes>(&mut conn).await;
     create_table::<Keepers>(&mut conn).await;
     create_table::<RaftLog>(&mut conn).await;
     create_table::<SnapshotMeta>(&mut conn).await;

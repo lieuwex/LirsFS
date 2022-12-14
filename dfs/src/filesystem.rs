@@ -1,5 +1,6 @@
-use std::{collections::HashMap, io::SeekFrom, path::PathBuf};
+use std::{collections::HashMap, io::SeekFrom};
 
+use camino::Utf8PathBuf;
 use thiserror::Error;
 use tokio::{
     fs::File,
@@ -40,8 +41,8 @@ impl FileSystem {
         }
     }
 
-    fn map_path<P: Into<PathBuf>>(&self, path: P) -> PathBuf {
-        let path: PathBuf = path.into();
+    fn map_path<P: Into<Utf8PathBuf>>(&self, path: P) -> Utf8PathBuf {
+        let path: Utf8PathBuf = path.into();
         CONFIG.file_dir.join(path)
     }
     fn get_file<'a>(&'a mut self, uuid: &Uuid) -> Result<&'a mut File> {
@@ -50,7 +51,7 @@ impl FileSystem {
             .ok_or_else(|| FileSystemError::UnknownFile(uuid.to_owned()))
     }
 
-    pub async fn open(&mut self, path: String) -> Result<Uuid> {
+    pub async fn open(&mut self, path: Utf8PathBuf) -> Result<Uuid> {
         let path = self.map_path(path);
         let uuid = Uuid::new_v4();
 
@@ -63,7 +64,7 @@ impl FileSystem {
 
         Ok(uuid)
     }
-    pub async fn read_dir(&self, path: String) -> Result<Vec<DirEntry>> {
+    pub async fn read_dir(&self, path: Utf8PathBuf) -> Result<Vec<DirEntry>> {
         let path = self.map_path(path);
 
         let mut res = Vec::new();
@@ -74,7 +75,7 @@ impl FileSystem {
 
         Ok(res)
     }
-    pub async fn metadata(&self, path: String) -> Result<FileMetadata> {
+    pub async fn metadata(&self, path: Utf8PathBuf) -> Result<FileMetadata> {
         let path = self.map_path(path);
         let metadata = tokio::fs::metadata(path).await?;
         Ok(metadata.into())

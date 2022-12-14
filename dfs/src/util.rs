@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use webdav_handler::davpath::DavPath;
+
+use crate::CONFIG;
 
 pub fn flatten_result<T, E1, E2>(val: Result<Result<T, E1>, E2>) -> Result<T>
 where
@@ -14,6 +16,13 @@ where
     }
 }
 
+/// Prepend [Config]'s `fs_dir` to `file_path`, creating an absolute path to the file on any node in the filesystem.
+pub fn prepend_fs_dir(file_path: &Utf8Path) -> String {
+    let mut full_path = CONFIG.file_dir.clone();
+    full_path.push(file_path);
+    full_path.into_string()
+}
+
 pub fn blob_to_hash(hash: &[u8]) -> Result<u64> {
     if hash.len() != 8 {
         bail!(
@@ -23,7 +32,7 @@ pub fn blob_to_hash(hash: &[u8]) -> Result<u64> {
     }
 
     let mut bytes: [u8; 8] = [0; 8];
-    bytes.copy_from_slice(&hash);
+    bytes.copy_from_slice(hash);
     Ok(u64::from_be_bytes(bytes))
 }
 

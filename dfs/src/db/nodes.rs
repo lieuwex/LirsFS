@@ -1,20 +1,21 @@
-//! The Node table keeps track of every compute node in the LirsFs
+//! The Nodes table keeps track of every compute node in the LirsFs
 //!
 
+use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 use sqlx::query;
 
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NodeRow {
-    pub id: i32,
-    pub name: String,
+pub struct NodesRow {
+    pub id: NodeId,
+    pub ssh_host: String,
 }
 
-pub struct Node;
+pub struct Nodes;
 
-impl Schema for Node {
+impl Schema for Nodes {
     const TABLENAME: &'static str = "nodes";
 
     fn create_table_query() -> SqlxQuery {

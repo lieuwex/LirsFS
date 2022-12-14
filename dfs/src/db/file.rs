@@ -1,16 +1,11 @@
 //! The File table holds information about every file in the LirsFs
 
-use std::{
-    borrow::Borrow,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{
-    schema::{Schema, SqlxQuery},
-    Database,
-};
+use super::schema::{Schema, SqlxQuery};
 use crate::util::{blob_to_hash, flatten_result};
-use anyhow::{bail, Result};
+use anyhow::Result;
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -18,17 +13,19 @@ use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRow {
-    pub file_id: i64,
-    pub file_path: String,
+    pub file_path: Utf8PathBuf,
     pub file_size: u64,
     pub modified_at: SystemTime,
     pub content_hash: Option<u64>,
     pub replication_factor: u64,
+    /// `false` means this is a directory
+    pub is_file: bool,
 }
 
 impl DavDirEntry for FileRow {
     fn name(&self) -> Vec<u8> {
-        self.file_path.clone().into_bytes()
+        let file_name = self.file_path.file_name().unwrap();
+        String::from(file_name).into_bytes()
     }
 
     fn metadata(&self) -> FsFuture<Box<dyn DavMetaData>> {
@@ -68,8 +65,10 @@ impl File {
         };
 
         Ok(FileRow {
-            file_id: row.get("id"),
-            file_path: row.get("path"),
+            file_path: {
+                let s: String = row.get("path");
+                Utf8PathBuf::from(s)
+            },
             file_size: get_u64("size")?,
             modified_at: {
                 let ts = get_u64("modified_at")?;
@@ -77,33 +76,39 @@ impl File {
             },
             content_hash: hash,
             replication_factor: get_u64("replication_factor")?,
+            is_file: row.get("is_file"),
         })
     }
 
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<FileRow>> {
-        let res: Vec<FileRow> = query("SELECT id, path, size, hash, replication_factor FROM files")
-            .map(Self::map_row)
-            .fetch(conn)
-            .map(flatten_result)
-            .try_collect()
-            .await?;
+        let res: Vec<FileRow> =
+            query("SELECT path, size, hash, replication_factor, is_file FROM files")
+                .map(Self::map_row)
+                .fetch(conn)
+                .map(flatten_result)
+                .try_collect()
+                .await?;
         Ok(res)
     }
 
-    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Option<FileRow>> {
-        let res: Option<FileRow> =
-            query("SELECT id, path, size, hash, replication_factor FROM files WHERE path = ?1")
-                .bind(path)
-                .map(Self::map_row)
-                .fetch_optional(conn)
-                .await?
-                .transpose()?;
+    pub async fn get_by_path(
+        conn: &mut SqliteConnection,
+        path: &Utf8Path,
+    ) -> Result<Option<FileRow>> {
+        let res: Option<FileRow> = query(
+            "SELECT path, size, hash, replication_factor, is_file FROM files WHERE path = ?1",
+        )
+        .bind(path.as_str())
+        .map(Self::map_row)
+        .fetch_optional(conn)
+        .await?
+        .transpose()?;
         Ok(res)
     }
 
     pub async fn create_file(
         conn: &mut SqliteConnection,
-        path: String,
+        path: Utf8PathBuf,
         replication_factor: u64,
     ) -> Result<FileRow> {
         query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, TRUE, 0, ?2)")
@@ -113,13 +118,34 @@ impl File {
             .await?;
 
         Ok(FileRow {
-            file_id: 0,
             file_path: path,
             file_size: 0,
             modified_at: SystemTime::now(),
             content_hash: None,
             replication_factor,
+            is_file: true,
         })
+    }
+
+    pub async fn update_file_hash(
+        conn: &mut SqliteConnection,
+        path: &Utf8Path,
+        hash: Option<u64>,
+    ) -> Result<()> {
+        let hash = hash.map(|h| h.to_be_bytes().to_vec());
+        let path = path.as_str();
+        query!(
+            "
+            UPDATE files
+            SET hash = ?
+            WHERE path = ?
+        ",
+            hash,
+            path
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
     }
 }
 
