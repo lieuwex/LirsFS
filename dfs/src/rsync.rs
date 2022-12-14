@@ -16,7 +16,7 @@ impl Rsync {
     }
 
     pub async fn copy_from(remote_host: String, filename: &Utf8Path) -> Result<()> {
-        let full_path = util::prepend_fs_dir(filename.as_std_path());
+        let full_path = util::prepend_fs_dir(filename);
 
         let output = Command::new("rsync")
             .arg(format!("{remote_host}:{full_path}"))

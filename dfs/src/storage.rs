@@ -128,7 +128,7 @@ impl AppRaftStorage {
                 path,
             } => {
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
-                File::update_file_hash(conn, path.as_str(), Some(*hash)).await?;
+                File::update_file_hash(conn, path, Some(*hash)).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
             NodeJoin { node_id } => todo!(),
@@ -369,7 +369,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             DETACH DATABASE snapshot;
         ",
         )
-        .bind(tmp_path.to_str().unwrap())
+        .bind(tmp_path.as_str())
         .bind(delete_through.map(|id| id as i64).unwrap_or(-1))
         .bind(delete_through.is_some()) // HACK
         .execute_many(&mut tx)

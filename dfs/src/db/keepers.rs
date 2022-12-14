@@ -1,8 +1,6 @@
 //! The Keepers table is a junction table between File and Node, defining which nodes hold which files
 
-use std::path::{Path, PathBuf};
-
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_raft::NodeId;
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
@@ -27,11 +25,9 @@ pub struct Keepers;
 impl Keepers {
     pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
-        file: &Path,
+        file: &Utf8Path,
     ) -> Result<Vec<NodeId>> {
-        let filepath = file
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
+        let filepath = file.as_str();
 
         let keeper_nodes = query!(
             "
@@ -77,9 +73,12 @@ impl Keepers {
         }
     }
 
-    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Vec<KeepersRow>> {
+    pub async fn get_by_path(
+        conn: &mut SqliteConnection,
+        path: &Utf8Path,
+    ) -> Result<Vec<KeepersRow>> {
         let res: Vec<_> = query("SELECT keepers.* FROM keepers where path = ?1")
-            .bind(path)
+            .bind(path.as_str())
             .fetch(conn)
             .map(|r| anyhow::Ok(r?))
             .and_then(|row: SqliteRow| async move {
