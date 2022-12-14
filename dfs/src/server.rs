@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use async_raft::raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse};
+use camino::Utf8PathBuf;
 use tarpc::context::Context;
 use uuid::Uuid;
 
@@ -44,15 +45,15 @@ impl Service for Server {
 
     async fn ping(self, _: Context) {}
 
-    async fn open(self, _: Context, path: String) -> Uuid {
+    async fn open(self, _: Context, path: Utf8PathBuf) -> Uuid {
         let mut fs = FILE_SYSTEM.lock().await;
         fs.open(path).await.unwrap()
     }
-    async fn read_dir(self, _: Context, path: String) -> Vec<DirEntry> {
+    async fn read_dir(self, _: Context, path: Utf8PathBuf) -> Vec<DirEntry> {
         let fs = FILE_SYSTEM.lock().await;
         fs.read_dir(path).await.unwrap()
     }
-    async fn metadata(self, _: Context, path: String) -> FileMetadata {
+    async fn metadata(self, _: Context, path: Utf8PathBuf) -> FileMetadata {
         let fs = FILE_SYSTEM.lock().await;
         fs.metadata(path).await.unwrap()
     }

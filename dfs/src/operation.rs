@@ -1,6 +1,6 @@
 use crate::db::keepers::Keepers;
 
-use std::{path::PathBuf, time::SystemTime};
+use std::time::SystemTime;
 
 use async_raft::NodeId;
 use camino::Utf8PathBuf;

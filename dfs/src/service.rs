@@ -2,6 +2,7 @@ use async_raft::raft::{
     AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest, InstallSnapshotResponse,
     VoteRequest, VoteResponse,
 };
+use camino::Utf8PathBuf;
 use uuid::Uuid;
 
 use crate::{
@@ -21,9 +22,9 @@ pub trait Service {
     async fn ping();
 
     /* Filesystem operations */
-    async fn open(path: String) -> Uuid;
-    async fn read_dir(path: String) -> Vec<DirEntry>;
-    async fn metadata(path: String) -> FileMetadata;
+    async fn open(path: Utf8PathBuf) -> Uuid;
+    async fn read_dir(path: Utf8PathBuf) -> Vec<DirEntry>;
+    async fn metadata(path: Utf8PathBuf) -> FileMetadata;
 
     async fn file_metadata(file_id: Uuid) -> FileMetadata;
     async fn write_bytes(file_id: Uuid, buf: Vec<u8>) -> ();

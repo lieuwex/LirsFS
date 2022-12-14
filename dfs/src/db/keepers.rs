@@ -1,10 +1,8 @@
 //! The Keepers table is a junction table between File and Node, defining which nodes hold which files
 
-use std::path::{Path, PathBuf};
-
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_raft::NodeId;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -16,7 +14,7 @@ use super::schema::{Schema, SqlxQuery};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepersRow {
     pub id: i64,
-    pub path: PathBuf,
+    pub path: Utf8PathBuf,
     pub node_id: NodeId,
     pub hash: u64,
 }
@@ -27,11 +25,9 @@ pub struct Keepers;
 impl Keepers {
     pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
-        file: &Path,
+        file: &Utf8Path,
     ) -> Result<Vec<NodeId>> {
-        let filepath = file
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
+        let filepath = file.as_str();
 
         let keeper_nodes = query!(
             "
@@ -52,12 +48,8 @@ impl Keepers {
     /// or `None` if there is no keeper for this file.
     pub async fn get_random_keeper_for_file(
         conn: &mut SqliteConnection,
-        file: &Path,
+        file: &str,
     ) -> Result<Option<NodeId>> {
-        let filepath = file
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
-
         let record = query!(
             "
             SELECT id
@@ -70,7 +62,7 @@ impl Keepers {
                 LIMIT 1
             );
         ",
-            filepath
+            file
         )
         .fetch_optional(conn)
         .await?;
@@ -81,9 +73,12 @@ impl Keepers {
         }
     }
 
-    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Vec<KeepersRow>> {
+    pub async fn get_by_path(
+        conn: &mut SqliteConnection,
+        path: &Utf8Path,
+    ) -> Result<Vec<KeepersRow>> {
         let res: Vec<_> = query("SELECT keepers.* FROM keepers where path = ?1")
-            .bind(path)
+            .bind(path.as_str())
             .fetch(conn)
             .map(|r| anyhow::Ok(r?))
             .and_then(|row: SqliteRow| async move {
@@ -91,7 +86,7 @@ impl Keepers {
                     id: row.get("id"),
                     path: {
                         let s: String = row.get("path");
-                        PathBuf::from(s)
+                        Utf8PathBuf::from(s)
                     },
                     node_id: {
                         let id: i64 = row.get("node_id");
@@ -119,6 +114,25 @@ impl Keepers {
         ",
             file,
             node_id
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_keeper_for_file(
+        conn: &mut SqliteConnection,
+        file: &str,
+        node_id: NodeId,
+    ) -> Result<()> {
+        let node_id = node_id as i64;
+        query!(
+            "
+            DELETE FROM keepers
+            WHERE node_id = ? AND path = ?
+        ",
+            node_id,
+            file
         )
         .execute(conn)
         .await?;

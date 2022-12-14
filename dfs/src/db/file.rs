@@ -1,17 +1,11 @@
 //! The File table holds information about every file in the LirsFs
 
-use std::{
-    borrow::Borrow,
-    path::Path,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{
-    schema::{Schema, SqlxQuery},
-    Database,
-};
+use super::schema::{Schema, SqlxQuery};
 use crate::util::{blob_to_hash, flatten_result};
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -19,7 +13,7 @@ use webdav_handler::fs::{DavDirEntry, DavMetaData, FsFuture, FsResult};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRow {
-    pub file_path: String,
+    pub file_path: Utf8PathBuf,
     pub file_size: u64,
     pub modified_at: SystemTime,
     pub content_hash: Option<u64>,
@@ -30,7 +24,8 @@ pub struct FileRow {
 
 impl DavDirEntry for FileRow {
     fn name(&self) -> Vec<u8> {
-        self.file_path.clone().into_bytes()
+        let file_name = self.file_path.file_name().unwrap();
+        String::from(file_name).into_bytes()
     }
 
     fn metadata(&self) -> FsFuture<Box<dyn DavMetaData>> {
@@ -70,7 +65,10 @@ impl File {
         };
 
         Ok(FileRow {
-            file_path: row.get("path"),
+            file_path: {
+                let s: String = row.get("path");
+                Utf8PathBuf::from(s)
+            },
             file_size: get_u64("size")?,
             modified_at: {
                 let ts = get_u64("modified_at")?;
@@ -93,11 +91,14 @@ impl File {
         Ok(res)
     }
 
-    pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Option<FileRow>> {
+    pub async fn get_by_path(
+        conn: &mut SqliteConnection,
+        path: &Utf8Path,
+    ) -> Result<Option<FileRow>> {
         let res: Option<FileRow> = query(
             "SELECT path, size, hash, replication_factor, is_file FROM files WHERE path = ?1",
         )
-        .bind(path)
+        .bind(path.as_str())
         .map(Self::map_row)
         .fetch_optional(conn)
         .await?
@@ -107,7 +108,7 @@ impl File {
 
     pub async fn create_file(
         conn: &mut SqliteConnection,
-        path: String,
+        path: Utf8PathBuf,
         replication_factor: u64,
     ) -> Result<FileRow> {
         query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, TRUE, 0, ?2)")
@@ -128,10 +129,11 @@ impl File {
 
     pub async fn update_file_hash(
         conn: &mut SqliteConnection,
-        path: &str,
+        path: &Utf8Path,
         hash: Option<u64>,
     ) -> Result<()> {
         let hash = hash.map(|h| h.to_be_bytes().to_vec());
+        let path = path.as_str();
         query!(
             "
             UPDATE files
