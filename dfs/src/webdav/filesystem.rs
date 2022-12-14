@@ -1,23 +1,19 @@
 use anyhow::{anyhow, Ok, Result};
-use async_raft::{raft::ClientWriteRequest, NodeId};
+use async_raft::NodeId;
 use futures::prelude::*;
-use hyper::StatusCode;
-use rand::seq::SliceRandom;
-use rand::thread_rng;
-use std::borrow::BorrowMut;
 use std::time::SystemTime;
 use tarpc::context::Context;
 use webdav_handler::{
     davpath::DavPath,
     fs::{
-        DavDirEntry, DavFile, DavFileSystem, DavMetaData, DavProp, FsError, FsFuture, FsStream,
-        OpenOptions, ReadDirMeta,
+        DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsError, FsFuture, FsStream, OpenOptions,
+        ReadDirMeta,
     },
 };
 
 use crate::{
     assume_client,
-    db::{db, file::File, schema::Schema},
+    db::{db, file::File},
     db_conn,
     operation::ClientToNodeOperation,
     util::davpath_to_pathbuf,

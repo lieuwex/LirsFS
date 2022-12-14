@@ -5,7 +5,7 @@ use sqlx::{query, SqliteConnection};
 
 use super::{
     errors::raftlog_deserialize_error,
-    raftlog::{RaftLogEntry, RaftLogId, RaftLogTerm},
+    raftlog::{RaftLogId, RaftLogTerm},
     schema::Schema,
 };
 

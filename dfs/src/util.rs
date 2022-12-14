@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use webdav_handler::davpath::DavPath;
 
-use crate::{config::Config, CONFIG};
+use crate::CONFIG;
 
 pub fn flatten_result<T, E1, E2>(val: Result<Result<T, E1>, E2>) -> Result<T>
 where
