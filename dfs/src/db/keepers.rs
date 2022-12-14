@@ -138,6 +138,21 @@ impl Keepers {
         .await?;
         Ok(())
     }
+
+    /// Permanently delete a keeper, e.g. because the node has died.
+    pub async fn delete_keeper(conn: &mut SqliteConnection, node_id: NodeId) -> Result<()> {
+        let node_id = node_id as i64;
+        query!(
+            "
+            DELETE FROM keepers
+            WHERE node_id = ?
+        ",
+            node_id
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
+    }
 }
 
 impl Schema for Keepers {
