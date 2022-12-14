@@ -1,8 +1,8 @@
-use std::{fmt::Debug, ops::Deref};
+use std::{fmt::Debug, ops::Deref, time::Duration};
 
 use async_raft::{
     raft::{ClientWriteRequest, ClientWriteResponse},
-    ClientWriteError, Raft,
+    ClientWriteError, NodeId, Raft,
 };
 
 use crate::{
@@ -29,6 +29,16 @@ impl RaftApp {
         self.app
             .client_write(ClientWriteRequest::new(request.into()))
             .await
+    }
+
+    /// Get the current leader of the Raft cluster. If no leader exists (i.e., an election is in progress), wait and poll for the new leader.
+    pub async fn get_leader_or_wait(&self) -> NodeId {
+        loop {
+            if let Some(leader) = self.current_leader().await {
+                break leader;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await
+        }
     }
 }
 
