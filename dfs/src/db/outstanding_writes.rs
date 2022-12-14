@@ -39,6 +39,6 @@ impl Schema for OutstandingWrites {
     const TABLENAME: &'static str = "outstanding_writes";
 
     fn create_table_query() -> SqlxQuery {
-        query(include_str!("../../sql/outstanding_writes.sql"))
+        query(include_str!("../../sql/create_outstanding_writes.sql"))
     }
 }
