@@ -7,6 +7,6 @@ CREATE TABLE IF NOT EXISTS keepers (
     -- hash is in big-endian byte order.
     hash                blob not null,
 
-    FOREIGN KEY(node_id) REFERENCES node(id)
-    FOREIGN KEY(path) REFERENCES file(path)
+    FOREIGN KEY(node_id) REFERENCES nodes(id)
+    FOREIGN KEY(path) REFERENCES files(path)
 );
