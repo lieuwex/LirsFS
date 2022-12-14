@@ -24,6 +24,7 @@ pub struct FileRow {
     pub modified_at: SystemTime,
     pub content_hash: Option<u64>,
     pub replication_factor: u64,
+    /// `false` means this is a directory
     pub is_file: bool,
 }
 
@@ -82,7 +83,7 @@ impl File {
     }
 
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<FileRow>> {
-        let res: Vec<FileRow> = query("SELECT id, path, size, hash, replication_factor FROM files")
+        let res: Vec<FileRow> = query("SELECT path, size, hash, replication_factor FROM files")
             .map(Self::map_row)
             .fetch(conn)
             .map(flatten_result)
@@ -93,7 +94,7 @@ impl File {
 
     pub async fn get_by_path(conn: &mut SqliteConnection, path: &str) -> Result<Option<FileRow>> {
         let res: Option<FileRow> =
-            query("SELECT id, path, size, hash, replication_factor FROM files WHERE path = ?1")
+            query("SELECT path, size, hash, replication_factor FROM files WHERE path = ?1")
                 .bind(path)
                 .map(Self::map_row)
                 .fetch_optional(conn)

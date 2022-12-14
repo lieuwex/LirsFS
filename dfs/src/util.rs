@@ -37,7 +37,7 @@ pub fn blob_to_hash(hash: &[u8]) -> Result<u64> {
     }
 
     let mut bytes: [u8; 8] = [0; 8];
-    bytes.copy_from_slice(&hash);
+    bytes.copy_from_slice(hash);
     Ok(u64::from_be_bytes(bytes))
 }
 
