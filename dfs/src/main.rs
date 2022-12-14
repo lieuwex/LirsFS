@@ -30,6 +30,7 @@ mod filesystem;
 mod network;
 mod operation;
 mod raft_app;
+mod rsync;
 mod server;
 mod service;
 mod storage;
