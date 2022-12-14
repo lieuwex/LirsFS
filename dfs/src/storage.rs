@@ -55,11 +55,19 @@ struct QueueItem {
     waiters: HashMap<u64, oneshot::Sender<()>>,
 }
 
-struct QueueHandle(pub(self) oneshot::Sender<()>);
+struct QueueHandle(Option<oneshot::Sender<()>>);
+
+impl QueueHandle {
+    fn new(tx: oneshot::Sender<()>) -> Self {
+        Self(Some(tx))
+    }
+}
 
 impl Drop for QueueHandle {
     fn drop(&mut self) {
-        let _ = self.0.send(());
+        if let Some(tx) = self.0.take() {
+            let _ = tx.send(());
+        }
     }
 }
 
@@ -118,7 +126,7 @@ impl Queue {
             drop(write_lock);
         });
 
-        Ok(QueueHandle(htx))
+        Ok(QueueHandle::new(htx))
     }
 
     pub async fn get_read(&self, path: Utf8PathBuf) -> OwnedRwLockReadGuard<()> {
