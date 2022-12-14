@@ -120,6 +120,25 @@ impl Keepers {
         .await?;
         Ok(())
     }
+
+    pub async fn delete_keeper_for_file(
+        conn: &mut SqliteConnection,
+        file: &str,
+        node_id: NodeId,
+    ) -> Result<()> {
+        let node_id = node_id as i64;
+        query!(
+            "
+            DELETE FROM keepers
+            WHERE node_id = ? AND path = ?
+        ",
+            node_id,
+            file
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
+    }
 }
 
 impl Schema for Keepers {
