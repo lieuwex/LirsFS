@@ -3,11 +3,10 @@ use async_raft::raft::{
     VoteRequest, VoteResponse,
 };
 use camino::Utf8PathBuf;
-use uuid::Uuid;
 
 use crate::{
     client_req::AppClientRequest,
-    webdav::{DirEntry, FileMetadata, SeekFrom},
+    webdav::{DirEntry, SeekFrom},
 };
 
 #[tarpc::service]
@@ -22,13 +21,7 @@ pub trait Service {
     async fn ping();
 
     /* Filesystem operations */
-    async fn open(path: Utf8PathBuf) -> Uuid;
     async fn read_dir(path: Utf8PathBuf) -> Vec<DirEntry>;
-    async fn metadata(path: Utf8PathBuf) -> FileMetadata;
-
-    async fn file_metadata(file_id: Uuid) -> FileMetadata;
-    async fn write_bytes(file_id: Uuid, buf: Vec<u8>) -> ();
-    async fn read_bytes(file_id: Uuid, count: usize) -> Vec<u8>;
-    async fn seek(file_id: Uuid, pos: SeekFrom) -> u64;
-    async fn flush(file_id: Uuid) -> ();
+    async fn write_bytes(path: Utf8PathBuf, pos: SeekFrom, buf: Vec<u8>) -> ();
+    async fn read_bytes(path: Utf8PathBuf, pos: SeekFrom, count: usize) -> Vec<u8>;
 }

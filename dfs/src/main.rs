@@ -15,7 +15,8 @@ use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::task::JoinHandle;
+use webdav::WebdavFilesystem;
 
 mod client_req;
 mod client_res;
@@ -42,7 +43,8 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config = fs::read_to_string(config_path).unwrap();
     toml::from_str(&config).expect("Couldn't parse config file")
 });
-pub static FILE_SYSTEM: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem::new()));
+pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
+pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: &RaftApp) -> ! {

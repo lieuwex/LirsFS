@@ -7,6 +7,7 @@ pub use seekfrom::*;
 mod direntry;
 mod filepointer;
 mod filesystem;
+mod fspointer;
 mod metadata;
 mod seekfrom;
 
@@ -15,15 +16,18 @@ use std::{convert::Infallible, net::SocketAddr};
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request, Response};
 use tokio::{sync::OwnedRwLockReadGuard, time::Instant};
-use webdav_handler::{fakels::FakeLs, localfs::LocalFs, DavHandler};
+use webdav_handler::{fakels::FakeLs, fs::DavFileSystem, DavHandler};
 
-use crate::{service::ServiceClient, RAFT};
+use crate::{service::ServiceClient, RAFT, WEBDAV_FS};
+
+use self::fspointer::FsPointer;
 
 type Client = OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient>;
 
 pub async fn listen(addr: &SocketAddr) -> Result<()> {
+    let fs: Box<dyn DavFileSystem> = Box::new(FsPointer(WEBDAV_FS.get().unwrap().clone()));
     let dav_server = DavHandler::builder()
-        .filesystem(LocalFs::new("test", true, false, false))
+        .filesystem(fs)
         .locksystem(FakeLs::new())
         .build_handler();
 
