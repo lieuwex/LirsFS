@@ -85,13 +85,13 @@ impl AppRaftStorage {
                 todo!("Update membership config to remove node, `nodes` and `keepers` table so readers won't try a dead node. Then return the last known contact time to the client.")
             }
             DeleteReplica { path, node_id } => {
-                todo!();
-                // if self.get_own_id() != *node_id {
-                //     return Ok(AppClientResponse(Ok(format!(
-                //         "I (node_id: {}) am not the target of this operation",
-                //         node_id
-                //     ))));
-                // }
+                // Every node deregisters `node_id` as a keeper for this file
+                Keepers::delete_keeper_for_file(conn, path.as_str(), *node_id).await?;
+                // The keeper node additionally deletes the file from its filesystem
+                if self.get_own_id() == *node_id {
+                    tokio::fs::remove_file(path).await?;
+                }
+                Ok(AppClientResponse(Ok("".into())))
             }
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
