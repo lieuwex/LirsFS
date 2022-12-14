@@ -90,23 +90,23 @@ impl AppRaftStorage {
                 Keepers::delete_keeper(conn, *lost_node).await?;
 
                 let raft = &RAFT.get().unwrap();
-                let leader = raft.get_leader_or_wait().await;
 
                 // Change the membership config of the Raft cluster to exclude `lost_node`
-                if self.get_own_id() == leader {
-                    loop {
+                loop {
+                    let leader = raft.get_leader_or_wait().await;
+                    if self.get_own_id() == leader {
                         let mut current_members = RaftLog::get_last_membership(conn)
                             .await?
                             .ok_or_else(|| anyhow!("Inconsistent raftlog: No membership found"))?
                             .members;
                         current_members.remove(lost_node);
+
+                        // In the extremely rare scenario that the current leader was deposed in between `get_leader_or_wait`
+                        // and performing this operation, we will request the new leader and try again
                         match raft.change_membership(current_members).await {
                             Ok(_) => break,
                             Err(err) => match err {
-                                ChangeConfigError::NodeNotLeader(_) => {
-                                    // In the extremely rare scenario that the current leader was deposed in between `get_leader_or_wait`
-                                    // and performing this operation, we will request the new leader and try again
-                                }
+                                ChangeConfigError::NodeNotLeader(_) => {}
                                 _ => {
                                     return Err(anyhow!(
                                         "Could not change membership config: {:#?}",
@@ -115,6 +115,9 @@ impl AppRaftStorage {
                                 }
                             },
                         }
+                    } else {
+                        // This node is not the leader, so the operation is finished
+                        break;
                     }
                 }
 
