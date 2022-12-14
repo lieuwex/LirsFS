@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use async_raft::NodeId;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
@@ -16,7 +16,7 @@ use super::schema::{Schema, SqlxQuery};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepersRow {
     pub id: i64,
-    pub path: PathBuf,
+    pub path: Utf8PathBuf,
     pub node_id: NodeId,
     pub hash: u64,
 }
@@ -52,12 +52,8 @@ impl Keepers {
     /// or `None` if there is no keeper for this file.
     pub async fn get_random_keeper_for_file(
         conn: &mut SqliteConnection,
-        file: &Path,
+        file: &str,
     ) -> Result<Option<String>> {
-        let filepath = file
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid argument `filepath`: Contained non-UTF8 characters"))?;
-
         let record = query!(
             "
             SELECT ssh_host
@@ -70,7 +66,7 @@ impl Keepers {
                 LIMIT 1
             );
         ",
-            filepath
+            file
         )
         .fetch_optional(conn)
         .await?;
@@ -91,7 +87,7 @@ impl Keepers {
                     id: row.get("id"),
                     path: {
                         let s: String = row.get("path");
-                        PathBuf::from(s)
+                        Utf8PathBuf::from(s)
                     },
                     node_id: {
                         let id: i64 = row.get("node_id");
