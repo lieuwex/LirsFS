@@ -44,15 +44,15 @@ impl Keepers {
         Ok(keeper_nodes)
     }
 
-    /// Return the ssh host for a keeper of the file indicated by `path`,
+    /// Return the node id for a keeper of the file indicated by `path`,
     /// or `None` if there is no keeper for this file.
     pub async fn get_random_keeper_for_file(
         conn: &mut SqliteConnection,
         file: &str,
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<NodeId>> {
         let record = query!(
             "
-            SELECT ssh_host
+            SELECT id
             FROM nodes
             WHERE id IN (
                 SELECT node_id
@@ -67,7 +67,7 @@ impl Keepers {
         .fetch_optional(conn)
         .await?;
         if let Some(record) = record {
-            Ok(Some(record.ssh_host))
+            Ok(Some(record.id as NodeId))
         } else {
             Ok(None)
         }

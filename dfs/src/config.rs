@@ -94,4 +94,9 @@ impl Config {
     pub fn blank_file_registry_snapshot(&self) -> Utf8PathBuf {
         self.file_registry_snapshot.with_extension("db.blank")
     }
+
+    pub fn get_node_ssh_host(&self, node_id: NodeId) -> Option<SocketAddr> {
+        // Yes, O(N), what are you going to do about it?
+        self.nodes.iter().find(|n| n.id == node_id).map(|n| n.addr)
+    }
 }
