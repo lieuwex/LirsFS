@@ -6,6 +6,7 @@ use crate::{
         file::File,
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
+        nodes::Nodes,
         raftlog::{RaftLog, RaftLogId},
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
@@ -13,7 +14,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-    CONFIG,
+    CONFIG, RAFT,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -21,8 +22,10 @@ use async_raft::{
     raft::{Entry, MembershipConfig},
     storage::InitialState,
     storage::{CurrentSnapshotData, HardState},
-    Config, NodeId, RaftStorage,
+    ChangeConfigError, Config, NodeId, RaftStorage,
 };
+use chrono::offset::Utc;
+use chrono::DateTime;
 use futures::TryStreamExt;
 use sqlx::{query, SqliteConnection};
 use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
@@ -82,7 +85,45 @@ impl AppRaftStorage {
                 lost_node,
                 last_contact,
             } => {
-                todo!("Update membership config to remove node, `nodes` and `keepers` table so readers won't try a dead node. Then return the last known contact time to the client.")
+                Nodes::deactivate_node_by_id(conn, *lost_node).await?;
+                Keepers::delete_keeper(conn, *lost_node).await?;
+
+                let raft = &RAFT.get().unwrap();
+
+                // Change the membership config of the Raft cluster to exclude `lost_node`
+                loop {
+                    let leader = raft.get_leader_or_wait().await;
+                    if self.get_own_id() == leader {
+                        let mut current_members = RaftLog::get_last_membership(conn)
+                            .await?
+                            .ok_or_else(|| anyhow!("Inconsistent raftlog: No membership found"))?
+                            .members;
+                        current_members.remove(lost_node);
+
+                        // In the extremely rare scenario that the current leader was deposed in between `get_leader_or_wait`
+                        // and performing this operation, we will request the new leader and try again
+                        match raft.change_membership(current_members).await {
+                            Ok(_) => break,
+                            Err(err) => match err {
+                                ChangeConfigError::NodeNotLeader(_) => {}
+                                _ => {
+                                    return Err(anyhow!(
+                                        "Could not change membership config: {:#?}",
+                                        err
+                                    ))
+                                }
+                            },
+                        }
+                    } else {
+                        // This node is not the leader, so the operation is finished
+                        break;
+                    }
+                }
+
+                Ok(AppClientResponse(Ok(format!(
+                    "Last contact: {}",
+                    DateTime::<Utc>::from(*last_contact)
+                ))))
             }
             DeleteReplica { path, node_id } => {
                 // Every node deregisters `node_id` as a keeper for this file
