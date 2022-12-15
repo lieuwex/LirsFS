@@ -3,6 +3,8 @@ use std::net::SocketAddr;
 use async_raft::NodeId;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use serde_with::DisplayFromStr;
 use tokio::time::Duration;
 
 fn default_file_dir() -> Utf8PathBuf {
@@ -49,9 +51,12 @@ const fn default_reconnect_try_interval() -> Duration {
     Duration::from_millis(500)
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
+
+    #[serde_as(as = "DisplayFromStr")]
     pub addr: SocketAddr,
 }
 
