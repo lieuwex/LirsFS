@@ -31,13 +31,18 @@ impl RaftApp {
             .await
     }
 
-    /// Get the current leader of the Raft cluster. If no leader exists (i.e., an election is in progress), wait and poll for the new leader.
+    /// Get the current leader of the Raft cluster. If no leader exists (i.e., an election is in progress), wait for the new leader.
     pub async fn get_leader_or_wait(&self) -> NodeId {
+        let mut metrics = self.metrics().clone();
         loop {
-            if let Some(leader) = self.current_leader().await {
+            if let Some(leader) = metrics.borrow().current_leader {
                 break leader;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await
+            metrics
+                .changed()
+                .await
+                // If this happens, application is probably dead anyway
+                .expect("Error: Raft metrics sender was dropped")
         }
     }
 }
