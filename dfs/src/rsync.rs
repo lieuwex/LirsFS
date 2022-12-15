@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use async_raft::NodeId;
 use camino::Utf8Path;
 use tokio::process::Command;
 
@@ -15,7 +16,10 @@ impl Rsync {
         todo!()
     }
 
-    pub async fn copy_from(remote_host: String, filename: &Utf8Path) -> Result<()> {
+    pub async fn copy_from(node_id: NodeId, filename: &Utf8Path) -> Result<()> {
+        let remote_host = CONFIG
+            .get_node_ssh_host(node_id)
+            .ok_or_else(|| anyhow!("Node with id {:?} has no known socket address", node_id))?;
         let full_path = util::prepend_fs_dir(filename);
 
         let output = Command::new("rsync")

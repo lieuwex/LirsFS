@@ -12,7 +12,6 @@ use super::schema::{Schema, SqlxQuery};
 pub struct NodesRow {
     pub id: NodeId,
     pub active: bool,
-    pub ssh_host: String,
 }
 
 pub struct Nodes;
