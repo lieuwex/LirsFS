@@ -16,16 +16,11 @@ impl Rsync {
         todo!()
     }
 
-<<<<<<< HEAD
     pub async fn copy_from(node_id: NodeId, filename: &Utf8Path) -> Result<()> {
-        let full_path = util::prepend_fs_dir(filename.as_std_path());
         let remote_host = CONFIG
             .get_node_ssh_host(node_id)
             .ok_or_else(|| anyhow!("Node with id {:?} has no known socket address", node_id))?;
-=======
-    pub async fn copy_from(remote_host: String, filename: &Utf8Path) -> Result<()> {
         let full_path = util::prepend_fs_dir(filename);
->>>>>>> master
 
         let output = Command::new("rsync")
             .arg(format!("{remote_host}:{full_path}"))
