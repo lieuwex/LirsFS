@@ -45,6 +45,7 @@ pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
 });
 pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
 pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
+pub static STORAGE: OnceCell<Arc<AppRaftStorage>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
 async fn run_app(raft: &RaftApp) -> ! {
@@ -97,6 +98,8 @@ async fn main() {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
         rpc::server(listen_addr).await;
     });
+
+    // TODO: WEBDAV_FS, STORAGE
 
     let network = Arc::new(AppRaftNetwork::new(raft_config.clone()));
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));

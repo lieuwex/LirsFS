@@ -1,4 +1,10 @@
-use std::{collections::HashMap, fmt::Display, io::ErrorKind, iter, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    io::{ErrorKind, SeekFrom},
+    iter,
+    sync::Arc,
+};
 
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -35,7 +41,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-    CONFIG,
+    CONFIG, FILE_SYSTEM, FILE_SYSTEM,
 };
 
 #[derive(Error, Debug)]
@@ -92,32 +98,35 @@ impl Queue {
     // in the `outstanding_writes` table.
 
     /// Submit and hold a write lock for the file at `path` for write command `serial`.
+    /// This function will wait until a write lock is acquired.
     /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
-    /// If you are not going to need the write handle, do:
-    /// ```
-    /// let _ = get_write().await?;
-    /// ```
     pub async fn get_write(self: Arc<Self>, path: Utf8PathBuf, serial: u64) -> Result<QueueHandle> {
-        // channel to indicate that the caller of `get_write` is finished.
+        // channel to indicate that the caller of `get_write` is finished with the lock.
         let (htx, hrx) = oneshot::channel();
+
+        // channel to indicate that the write lock has been acquired.
+        let (ltx, lrx) = oneshot::channel();
 
         let this = self.clone();
         tokio::spawn(async move {
             // channel to indicate that the write operation has been completed
-            let (ftx, frx) = oneshot::channel();
+            let (otx, orx) = oneshot::channel();
 
             // we hold an entry lock for this whole task.
             let write_lock: OwnedRwLockWriteGuard<()> = {
                 // hold a lock on the items, this is as shortlived as posisble so that other tasks
                 // can mark this write as finished! ...
                 let mut entry = this.entry(path).await;
-                assert!(entry.waiters.insert(serial, ftx).is_none());
+                assert!(entry.waiters.insert(serial, otx).is_none());
                 // ... which is the reason we are holding a _owned_ guard here here.
                 entry.lock.clone().write_owned().await
             };
 
+            // Notify that the write lock has been acquired.
+            ltx.send(()).unwrap();
+
             // We wait for _both_ the channels to be done.
-            frx.await.unwrap();
+            orx.await.unwrap();
             hrx.await.unwrap();
 
             // And finally drop it.
@@ -126,6 +135,10 @@ impl Queue {
             drop(write_lock);
         });
 
+        // Wait until the write lock has been required before returning.
+        lrx.await?;
+
+        // Return a QueueHandle, if this is dropped we mark hrx as ready.
         Ok(QueueHandle::new(htx))
     }
 
@@ -163,6 +176,10 @@ impl AppRaftStorage {
         Ok(hardstate)
     }
 
+    pub fn get_queue(&self) -> Arc<Queue> {
+        self.queue.clone()
+    }
+
     /// Handle a [ClientToNodeOperation], possibly mutating the file registry.
     async fn handle_client_operation(
         &self,
@@ -171,10 +188,21 @@ impl AppRaftStorage {
         conn: &mut SqliteConnection,
     ) -> Result<AppClientResponse> {
         match op {
-            ClientToNodeOperation::Write { path, .. } => {
-                self.queue.clone().get_write(path.clone(), serial).await?;
+            ClientToNodeOperation::Write {
+                path,
+                offset,
+                contents,
+            } => {
+                let lock = self.get_queue().get_write(path.clone(), serial).await?;
 
-                Ok(todo!())
+                if Keepers::is_self_keeper(db_conn!(), path).await? {
+                    FILE_SYSTEM
+                        .write_bytes(path.clone(), SeekFrom::Start(*offset), &contents)
+                        .await?;
+                    Ok(format!("written {} bytes", contents.len()).into())
+                } else {
+                    Ok("am not a keeper".into())
+                }
             }
 
             _ => todo!(),
