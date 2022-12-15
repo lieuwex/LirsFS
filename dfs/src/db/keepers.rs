@@ -78,27 +78,35 @@ impl Keepers {
         conn: &mut SqliteConnection,
         path: &Utf8Path,
     ) -> Result<Vec<KeepersRow>> {
-        let res: Vec<_> = query("SELECT keepers.* FROM keepers where path = ?1")
-            .bind(path.as_str())
-            .fetch(conn)
-            .map(|r| anyhow::Ok(r?))
-            .and_then(|row: SqliteRow| async move {
-                Ok(KeepersRow {
-                    id: row.get("id"),
-                    path: {
-                        let s: String = row.get("path");
-                        Utf8PathBuf::from(s)
-                    },
-                    node_id: {
-                        let id: i64 = row.get("node_id");
-                        u64::try_from(id)?
-                    },
+        let res: Vec<_> = query(
+            "
+            SELECT keepers.*
+            FROM keepers
+            JOIN nodes
+                ON nodes.id = keepers.node_id
+            WHERE path = ?1
+            ",
+        )
+        .bind(path.as_str())
+        .fetch(conn)
+        .map(|r| anyhow::Ok(r?))
+        .and_then(|row: SqliteRow| async move {
+            Ok(KeepersRow {
+                id: row.get("id"),
+                path: {
+                    let s: String = row.get("path");
+                    Utf8PathBuf::from(s)
+                },
+                node_id: {
+                    let id: i64 = row.get("node_id");
+                    u64::try_from(id)?
+                },
 
-                    hash: blob_to_hash(row.get("hash"))?,
-                })
+                hash: blob_to_hash(row.get("hash"))?,
             })
-            .try_collect()
-            .await?;
+        })
+        .try_collect()
+        .await?;
         Ok(res)
     }
 
