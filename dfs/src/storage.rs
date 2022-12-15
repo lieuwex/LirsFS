@@ -1,6 +1,7 @@
 use crate::{
     client_req::AppClientRequest,
     client_res::AppClientResponse,
+    config::AppConfig,
     db::{
         self, curr_snapshot, db,
         file::File,
@@ -14,7 +15,7 @@ use crate::{
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     read_config,
     rsync::Rsync,
-    APP_CONFIG,
+    write_config, APP_CONFIG,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -135,7 +136,8 @@ impl AppRaftStorage {
             NodeJoin { node_id } => todo!(),
             NodeLeft { node_id } => todo!(),
             ReloadConfig => {
-                todo!()
+                *write_config!() = AppConfig::from_file();
+                Ok(AppClientResponse(Ok("".into())))
             }
         }
     }

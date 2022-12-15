@@ -100,4 +100,11 @@ impl AppConfig {
         // Yes, O(N), what are you going to do about it?
         self.nodes.iter().find(|n| n.id == node_id).map(|n| n.addr)
     }
+
+    /// Create an [AppConfig] by interpreting the first CLI argument to this program as a file path, opening said file, and parsing it as TOML.
+    pub fn from_file() -> Self {
+        let config_path = env::args().nth(1).expect("Provide a config file");
+        let config = fs::read_to_string(config_path).unwrap();
+        toml::from_str(&config).expect("Couldn't parse config file")
+    }
 }

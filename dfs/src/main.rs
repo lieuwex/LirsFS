@@ -43,12 +43,7 @@ mod webdav;
 
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
 pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
-pub static APP_CONFIG: Lazy<RwLock<AppConfig>> = Lazy::new(|| {
-    let config_path = env::args().nth(1).expect("Provide a config file");
-    let config = fs::read_to_string(config_path).unwrap();
-    let parsed_config = toml::from_str(&config).expect("Couldn't parse config file");
-    RwLock::new(parsed_config)
-});
+pub static APP_CONFIG: Lazy<RwLock<AppConfig>> = Lazy::new(|| RwLock::new(AppConfig::from_file()));
 
 #[macro_export]
 macro_rules! read_config {
