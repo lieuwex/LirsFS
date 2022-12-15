@@ -89,7 +89,7 @@ pub enum ClientToNodeOperation {
     /// Write `contents` to the existing file at `path`, starting from `offset`
     Write {
         path: Utf8PathBuf,
-        offset: usize,
+        offset: u64,
         contents: Vec<u8>,
     },
 

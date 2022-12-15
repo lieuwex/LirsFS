@@ -9,7 +9,7 @@ use webdav_handler::{
 };
 
 use super::{Client, SeekFrom, WebdavFilesystem};
-use crate::{util::davpath_to_pathbuf, WEBDAV_FS};
+use crate::{operation::ClientToNodeOperation, util::davpath_to_pathbuf, RAFT, STORAGE, WEBDAV_FS};
 
 #[derive(Debug, Clone)]
 pub struct FilePointer {
@@ -57,16 +57,15 @@ impl FilePointer {
     }
 }
 
-fn do_file<'a, Fun, FunRet, OK, ERR>(fp: &'a FilePointer, f: Fun) -> FsFuture<'a, OK>
+fn do_op<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
 where
-    Fun: (FnOnce(Client, &'a FilePointer) -> FunRet) + Send + 'a,
+    Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
     Box::pin(async move {
         let res = async {
-            let (_, client) = fp.fs.assume_keeper(&fp.file_path).await?;
-            let res = f(client, fp).await.map_err(|e| e.into())?;
+            let res = f().await.map_err(|e| e.into())?;
             anyhow::Ok(res)
         }
         .await
@@ -78,6 +77,18 @@ where
     })
 }
 
+fn do_file<'a, Fun, FunRet, OK, ERR>(fp: &'a FilePointer, f: Fun) -> FsFuture<'a, OK>
+where
+    Fun: (FnOnce(Client, &'a FilePointer) -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<OK, ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    do_op(move || async move {
+        let (_, client) = fp.fs.assume_keeper(&fp.file_path).await?;
+        f(client, fp).await.map_err(|e| e.into())
+    })
+}
+
 impl DavFile for FilePointer {
     fn metadata<'a>(&'a mut self) -> FsFuture<Box<dyn DavMetaData>> {
         self.fs.metadata(&self.file_path)
@@ -85,20 +96,34 @@ impl DavFile for FilePointer {
 
     fn write_buf<'a>(&'a mut self, buf: Box<dyn bytes::Buf + Send>) -> FsFuture<()> {
         let bytes = buf.chunk().to_vec();
-        do_file(self, move |client, fp| async move {
-            let path = davpath_to_pathbuf(&fp.file_path);
-            client
-                .write_bytes(Context::current(), path, fp.get_seek(), bytes)
-                .await
+        do_op(move || async move {
+            let path = davpath_to_pathbuf(&self.file_path);
+            RAFT.get()
+                .unwrap()
+                .client_write(ClientToNodeOperation::Write {
+                    path,
+                    offset: self.pos,
+                    contents: bytes,
+                })
+                .await?;
+            anyhow::Ok(())
         })
     }
 
     fn write_bytes<'a>(&'a mut self, buf: bytes::Bytes) -> FsFuture<()> {
-        do_file(self, move |client, fp| async move {
-            let path = davpath_to_pathbuf(&fp.file_path);
-            client
-                .write_bytes(Context::current(), path, fp.get_seek(), buf.to_vec())
-                .await
+        do_op(move || async move {
+            let path = davpath_to_pathbuf(&self.file_path);
+
+            RAFT.get()
+                .unwrap()
+                .client_write(ClientToNodeOperation::Write {
+                    path,
+                    offset: self.pos,
+                    contents: buf.to_vec(),
+                })
+                .await?;
+
+            anyhow::Ok(())
         })
     }
 
