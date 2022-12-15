@@ -86,7 +86,7 @@ impl AppRaftStorage {
                 last_contact,
             } => {
                 // TODO: This could perhaps also be solved by foreign keys and ON DELETE CASCADE...
-                Nodes::delete(conn, *lost_node).await?;
+                Nodes::deactivate_node_by_id(conn, *lost_node).await?;
                 Keepers::delete_keeper(conn, *lost_node).await?;
 
                 let raft = &RAFT.get().unwrap();

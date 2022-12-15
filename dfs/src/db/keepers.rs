@@ -21,7 +21,6 @@ pub struct KeepersRow {
 
 pub struct Keepers;
 
-// TODO: Fix duplication in handling UTF8 errors in file paths
 impl Keepers {
     pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
@@ -33,7 +32,9 @@ impl Keepers {
             "
             SELECT node_id
             FROM keepers
-            WHERE path = ?
+            INNER JOIN nodes
+                ON nodes.id = keepers.node_id
+            WHERE path = ? AND active = 1
         ",
             filepath
         )
@@ -57,7 +58,7 @@ impl Keepers {
             WHERE id IN (
                 SELECT node_id
                 FROM keepers
-                WHERE path = ?
+                WHERE path = ? AND active = 1
                 ORDER BY RANDOM()
                 LIMIT 1
             );

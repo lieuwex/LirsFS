@@ -11,17 +11,19 @@ use super::schema::{Schema, SqlxQuery};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodesRow {
     pub id: NodeId,
+    pub active: bool,
     pub ssh_host: String,
 }
 
 pub struct Nodes;
 
 impl Nodes {
-    pub async fn delete(conn: &mut SqliteConnection, id: NodeId) -> Result<()> {
+    pub async fn deactivate_node_by_id(conn: &mut SqliteConnection, id: NodeId) -> Result<()> {
         let id = id as i64;
         query!(
             "
-            DELETE FROM nodes
+            UPDATE nodes
+            SET active = 0
             WHERE id = ?
         ",
             id
