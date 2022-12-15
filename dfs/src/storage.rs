@@ -85,7 +85,6 @@ impl AppRaftStorage {
                 lost_node,
                 last_contact,
             } => {
-                // TODO: This could perhaps also be solved by foreign keys and ON DELETE CASCADE...
                 Nodes::deactivate_node_by_id(conn, *lost_node).await?;
                 Keepers::delete_keeper(conn, *lost_node).await?;
 
