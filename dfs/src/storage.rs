@@ -12,8 +12,9 @@ use crate::{
     },
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
+    read_config,
     rsync::Rsync,
-    CONFIG,
+    APP_CONFIG,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -50,12 +51,12 @@ impl AppRaftStorage {
         Self { config }
     }
 
-    pub fn get_own_id(&self) -> NodeId {
-        CONFIG.node_id
+    pub async fn get_own_id(&self) -> NodeId {
+        read_config!().node_id
     }
 
     async fn read_hard_state(&self) -> Result<Option<HardState>> {
-        let path = &CONFIG.hardstate_file;
+        let path = &read_config!().hardstate_file;
         let buff = tokio::fs::read(path).await?;
         let hardstate = bincode::deserialize(&buff)?;
         Ok(hardstate)
@@ -88,7 +89,7 @@ impl AppRaftStorage {
                 // Every node deregisters `node_id` as a keeper for this file
                 Keepers::delete_keeper_for_file(conn, path.as_str(), *node_id).await?;
                 // The keeper node additionally deletes the file from its filesystem
-                if self.get_own_id() == *node_id {
+                if self.get_own_id().await == *node_id {
                     tokio::fs::remove_file(path).await?;
                 }
                 Ok(AppClientResponse(Ok("".into())))
@@ -96,7 +97,7 @@ impl AppRaftStorage {
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
             StoreReplica { path, node_id } => {
-                if self.get_own_id() != *node_id {
+                if self.get_own_id().await != *node_id {
                     return Ok(AppClientResponse(Ok(format!(
                         "I (node_id: {}) am not the target of this operation",
                         node_id
@@ -133,6 +134,9 @@ impl AppRaftStorage {
             }
             NodeJoin { node_id } => todo!(),
             NodeLeft { node_id } => todo!(),
+            ReloadConfig => {
+                todo!()
+            }
         }
     }
 }
@@ -143,9 +147,10 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     type ShutdownError = AppError;
 
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
+        let id = self.get_own_id().await;
         Ok(RaftLog::get_last_membership(db_conn!())
             .await?
-            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id())))
+            .unwrap_or_else(|| MembershipConfig::new_initial(id)))
     }
 
     async fn get_initial_state(&self) -> Result<InitialState> {
@@ -153,7 +158,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             Some(hs) => hs,
             None => {
                 // This Raft node is pristine, return an empty initial config
-                let id = CONFIG.node_id;
+                let id = read_config!().node_id;
                 return Ok(InitialState::new_initial(id));
             }
         };
@@ -176,7 +181,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         // TODO: Also just store in SQLite?
-        let path = &CONFIG.hardstate_file;
+        let path = &read_config!().hardstate_file;
         tokio::fs::write(path, &bincode::serialize(hs)?).await?;
         Ok(())
     }
@@ -279,11 +284,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         let SnapshotMetaRow {
             last_applied_log, ..
         } = SnapshotMeta::get(&mut tx).await?;
-
+        let id = self.get_own_id().await;
         // Get last known membership config from the log
         let membership = RaftLog::get_last_membership_before(&mut tx, last_applied_log)
             .await?
-            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
+            .unwrap_or_else(|| MembershipConfig::new_initial(id));
 
         let term = RaftLog::get_by_id(&mut tx,last_applied_log).await?.ok_or_else(|| {
             anyhow!("Inconsistent log: `last_applied_log` from the `{}` table was not found in the `{}` table", SnapshotMeta::TABLENAME, RaftLog::TABLENAME)
@@ -321,7 +326,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             Box::new(
                 tokio::fs::OpenOptions::new()
                     .create_new(true)
-                    .open(CONFIG.blank_file_registry_snapshot())
+                    .open(read_config!().blank_file_registry_snapshot())
                     .await
                     // TODO: Better error handling
                     .expect("Error while creating blank snapshot file"),
@@ -334,13 +339,13 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         index: u64,
         term: u64,
         delete_through: Option<u64>,
-        id: String,
+        snapshot_id: String,
         mut snapshot: Box<Self::Snapshot>,
     ) -> Result<()> {
         // REVIEW (lieuwe): I am not sure if this is correct, actually.
 
         let tmp_path = {
-            let path = CONFIG.wip_file_registry_snapshot();
+            let path = read_config!().wip_file_registry_snapshot();
             let mut file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -351,9 +356,10 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         };
 
         let mut tx = db().begin().await?;
+        let id = self.get_own_id().await;
         let membership = RaftLog::get_last_membership_before(&mut tx, index)
             .await?
-            .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id()));
+            .unwrap_or_else(|| MembershipConfig::new_initial(id));
 
         // Transfer most recent membership and log entries >`delete_through` from current db to the received `snapshot` db
         query(
@@ -377,11 +383,16 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         .try_for_each(|_| async move { Ok(()) })
         .await?;
 
-        tokio::fs::rename(tmp_path, &CONFIG.file_registry_snapshot).await?;
+        tokio::fs::rename(tmp_path, &read_config!().file_registry_snapshot).await?;
 
         RaftLog::insert(
             &mut tx,
-            once(&Entry::new_snapshot_pointer(index, term, id, membership)),
+            once(&Entry::new_snapshot_pointer(
+                index,
+                term,
+                snapshot_id,
+                membership,
+            )),
         )
         .await;
 
@@ -396,12 +407,13 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             membership,
         } = SnapshotMeta::get(&mut curr_snapshot().await?).await?;
 
-        let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
+        let file = match tokio::fs::File::open(&read_config!().file_registry_snapshot).await {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => panic!(
                 "Error reading snapshot file at {:#?}: {:#?}",
-                CONFIG.file_registry_snapshot, err
+                read_config!().file_registry_snapshot,
+                err
             ),
         };
 

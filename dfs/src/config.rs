@@ -1,9 +1,10 @@
-use std::net::SocketAddr;
+use std::{env, fs, net::SocketAddr};
 
 use async_raft::NodeId;
 use camino::Utf8PathBuf;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use tokio::time::Duration;
+use tokio::{sync::RwLock, time::Duration};
 
 fn default_file_dir() -> Utf8PathBuf {
     if cfg!(debug_assertions) {
@@ -56,7 +57,7 @@ pub struct Node {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct AppConfig {
     pub node_id: NodeId,
     pub cluster_name: String,
     pub nodes: Vec<Node>,
@@ -79,7 +80,7 @@ pub struct Config {
     pub reconnect_try_interval_ms: Duration,
 }
 
-impl Config {
+impl AppConfig {
     /// Return the filename of a work-in-progress snapshot.
     /// After the snapshot is finalized, the Raft cluster's master must
     /// change this file's name to [Config]'s `file_registry_snapshot`

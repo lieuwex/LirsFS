@@ -11,7 +11,7 @@ use async_raft::{
 };
 use tarpc::context;
 
-use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
+use crate::{client_req::AppClientRequest, connection::NodeConnection, read_config, APP_CONFIG};
 
 pub const CLIENT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -22,8 +22,8 @@ pub struct AppRaftNetwork {
 }
 
 impl AppRaftNetwork {
-    pub fn new(raft_config: Arc<Config>) -> Self {
-        let nodes: HashMap<_, _> = (CONFIG.nodes)
+    pub async fn new(raft_config: Arc<Config>) -> Self {
+        let nodes: HashMap<_, _> = (read_config!().nodes)
             .iter()
             .map(|n| (n.id, NodeConnection::new(n.id, n.addr)))
             .collect();

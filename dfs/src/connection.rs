@@ -18,7 +18,7 @@ use tokio::{
 };
 use tokio_serde::formats::Bincode;
 
-use crate::{service::ServiceClient, CONFIG};
+use crate::{read_config, service::ServiceClient, APP_CONFIG};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConnectionState {
@@ -47,7 +47,7 @@ async fn pinger(
     client: Arc<RwLock<Option<ServiceClient>>>,
     ready: watch::Sender<ConnectionState>,
 ) -> ! {
-    let mut interval = time::interval(CONFIG.ping_interval);
+    let mut interval = time::interval(read_config!().ping_interval);
     interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
     let mut state = ConnectionState::Connecting;
@@ -74,7 +74,7 @@ async fn pinger(
                     let c = match connect(addr).await {
                         Ok(c) => c,
                         Err(e) => {
-                            let interval = CONFIG.reconnect_try_interval_ms;
+                            let interval = read_config!().reconnect_try_interval_ms;
                             eprintln!(
                                 "error while connecting, retrying in {:?}: {:?}",
                                 interval, e
@@ -97,10 +97,13 @@ async fn pinger(
                     missed_count += 1;
                     eprintln!(
                         "error while pinging to {:?} (missed count {}/{}): {:?}",
-                        addr, missed_count, CONFIG.max_missed_pings, e
+                        addr,
+                        missed_count,
+                        read_config!().max_missed_pings,
+                        e
                     );
 
-                    if missed_count > CONFIG.max_missed_pings {
+                    if missed_count > read_config!().max_missed_pings {
                         eprintln!("reconnecting {} to {}", node_id, addr);
                         *lock = None;
                         set_state!(ConnectionState::Reconnecting { failure_reason: e });

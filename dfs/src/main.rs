@@ -1,23 +1,27 @@
 #![allow(unused_labels)]
 
-use std::{
-    env, fs,
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-    sync::Arc,
-};
-
 use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
 use client_req::AppClientRequest;
 use client_res::AppClientResponse;
+use config::AppConfig;
 use db::Database;
 use filesystem::FileSystem;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
+use std::{
+    cell::RefCell,
+    env, fs,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+    sync::Arc,
+};
 use storage::AppRaftStorage;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 
 mod client_req;
 mod client_res;
@@ -39,11 +43,26 @@ mod webdav;
 
 pub static NETWORK: OnceCell<Arc<AppRaftNetwork>> = OnceCell::new();
 pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
-pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
+pub static APP_CONFIG: Lazy<RwLock<AppConfig>> = Lazy::new(|| {
     let config_path = env::args().nth(1).expect("Provide a config file");
     let config = fs::read_to_string(config_path).unwrap();
-    toml::from_str(&config).expect("Couldn't parse config file")
+    let parsed_config = toml::from_str(&config).expect("Couldn't parse config file");
+    RwLock::new(parsed_config)
 });
+
+#[macro_export]
+macro_rules! read_config {
+    () => {
+        APP_CONFIG.read().await
+    };
+}
+
+#[macro_export]
+macro_rules! write_config {
+    () => {
+        APP_CONFIG.write().await
+    };
+}
 pub static FILE_SYSTEM: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem::new()));
 pub static DB: OnceCell<Database> = OnceCell::new();
 
@@ -79,12 +98,12 @@ async fn main() {
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
-        Config::build(CONFIG.cluster_name.clone())
+        Config::build(read_config!().cluster_name.clone())
             .validate()
             .expect("Failed to build Raft config"),
     );
     DB.set(
-        Database::from_path(&CONFIG.file_registry)
+        Database::from_path(&read_config!().file_registry)
             .await
             .expect("Error connecting to file registry"),
     )
@@ -94,15 +113,17 @@ async fn main() {
     create_all_tables(DB.get().unwrap()).await;
 
     tokio::spawn(async {
-        let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
+        let listen_addr: SocketAddr = format!("[::]:{}", read_config!().listen_port)
+            .parse()
+            .unwrap();
         rpc::server(listen_addr).await;
     });
 
-    let network = Arc::new(AppRaftNetwork::new(raft_config.clone()));
+    let network = Arc::new(AppRaftNetwork::new(raft_config.clone()).await);
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
 
     // Get our node's ID from stable storage.
-    let node_id = storage.get_own_id();
+    let node_id = storage.get_own_id().await;
 
     // Create a new Raft node, which spawns an async task which
     // runs the Raft core logic. Keep this Raft instance around

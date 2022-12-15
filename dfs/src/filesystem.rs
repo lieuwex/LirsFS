@@ -9,8 +9,9 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
+    read_config,
     webdav::{DirEntry, FileMetadata},
-    CONFIG,
+    APP_CONFIG,
 };
 
 pub type Result<T> = std::result::Result<T, FileSystemError>;
@@ -41,9 +42,9 @@ impl FileSystem {
         }
     }
 
-    fn map_path<P: Into<Utf8PathBuf>>(&self, path: P) -> Utf8PathBuf {
+    async fn map_path<P: Into<Utf8PathBuf>>(&self, path: P) -> Utf8PathBuf {
         let path: Utf8PathBuf = path.into();
-        CONFIG.file_dir.join(path)
+        read_config!().file_dir.join(path)
     }
     fn get_file<'a>(&'a mut self, uuid: &Uuid) -> Result<&'a mut File> {
         self.open_files
@@ -52,7 +53,7 @@ impl FileSystem {
     }
 
     pub async fn open(&mut self, path: Utf8PathBuf) -> Result<Uuid> {
-        let path = self.map_path(path);
+        let path = self.map_path(path).await;
         let uuid = Uuid::new_v4();
 
         let file = File::open(path).await?;
@@ -65,7 +66,7 @@ impl FileSystem {
         Ok(uuid)
     }
     pub async fn read_dir(&self, path: Utf8PathBuf) -> Result<Vec<DirEntry>> {
-        let path = self.map_path(path);
+        let path = self.map_path(path).await;
 
         let mut res = Vec::new();
         let mut dir = tokio::fs::read_dir(path).await?;
@@ -76,7 +77,7 @@ impl FileSystem {
         Ok(res)
     }
     pub async fn metadata(&self, path: Utf8PathBuf) -> Result<FileMetadata> {
-        let path = self.map_path(path);
+        let path = self.map_path(path).await;
         let metadata = tokio::fs::metadata(path).await?;
         Ok(metadata.into())
     }

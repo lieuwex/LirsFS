@@ -33,19 +33,29 @@ pub enum NodeToNodeOperation {
     /// Replicate the file at `path` on the target node specified by `node_id`
     /// The target node will use the [Keepers] table to find out which other node already stores this file, and request the file from that node.
     /// This means the target node is now a keeper of the file.
-    StoreReplica { path: Utf8PathBuf, node_id: NodeId },
+    StoreReplica {
+        path: Utf8PathBuf,
+        node_id: NodeId,
+    },
 
     /// Delete the file replica of the file at `path` from the target node specified by `node_id`.
     /// This means the target node is no longer a keeper of the file.
-    DeleteReplica { path: Utf8PathBuf, node_id: NodeId },
+    DeleteReplica {
+        path: Utf8PathBuf,
+        node_id: NodeId,
+    },
 
     /// Node joined the network.
-    NodeJoin { node_id: NodeId },
+    NodeJoin {
+        node_id: NodeId,
+    },
 
     /// Node left the network. This could be a temporary node failure.
     /// Once the Raft cluster's master deems it necessary, it will issue [NodeToNodeOperation::NodeLost],
     /// indicating that this node is considered lost permanently.
-    NodeLeft { node_id: NodeId },
+    NodeLeft {
+        node_id: NodeId,
+    },
 
     /// Raft cluster master considers the node `lost_node` to be lost permanently.
     /// The master will then issue the operations necessary to ensure replication factor of all files is respected.
@@ -72,6 +82,7 @@ pub enum NodeToNodeOperation {
         /// Path of the file that was committed
         path: Utf8PathBuf,
     },
+    ReloadConfig,
 }
 
 /// Operations that a client (e.g. the WebDav server) can request from the Raft cluster.

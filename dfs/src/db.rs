@@ -14,7 +14,7 @@ use anyhow::Result;
 use camino::Utf8Path;
 use sqlx::{query, Connection, SqliteConnection, SqlitePool};
 
-use crate::{CONFIG, DB};
+use crate::{read_config, APP_CONFIG, DB};
 
 use self::snapshot_meta::SnapshotMetaRow;
 
@@ -61,7 +61,7 @@ macro_rules! db_conn {
 
 /// Open an SqliteConnection for the currently active snapshot
 pub async fn curr_snapshot() -> Result<SqliteConnection> {
-    let path = &CONFIG.file_registry_snapshot;
+    let path = &read_config!().file_registry_snapshot;
     let conn = SqliteConnection::connect(&Database::map_path(path)).await?;
     Ok(conn)
 }
@@ -69,7 +69,7 @@ pub async fn curr_snapshot() -> Result<SqliteConnection> {
 /// Create a snapshot of the file registry into the working snapshot file location.
 /// Returns a read-only file handle to the created snapshot.
 pub async fn create_snapshot(snapshot_metadata: &SnapshotMetaRow) -> Result<tokio::fs::File> {
-    let wip_snapshot_path = CONFIG.wip_file_registry_snapshot();
+    let wip_snapshot_path = read_config!().wip_file_registry_snapshot();
     let wip_snapshot_path = wip_snapshot_path.as_str();
 
     query!("VACUUM INTO ?", wip_snapshot_path)
