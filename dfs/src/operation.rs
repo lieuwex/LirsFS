@@ -76,10 +76,13 @@ pub enum NodeToNodeOperation {
 /// I.e., an external operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToNodeOperation {
-    /// Create a file at `path` with the given `replication_factor`
+    /// Create a file at `path` with the given `replication_factor`.
+    /// The `initial_keepers` list is a list of node ids, choosen by the leader, these nodes will
+    /// create the empty file in their file storage.
     CreateFile {
         path: Utf8PathBuf,
-        replication_factor: usize,
+        replication_factor: u64,
+        initial_keepers: Vec<NodeId>,
     },
     /// Create a dictionary at `path`.
     CreateDir {
