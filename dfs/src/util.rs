@@ -50,6 +50,7 @@ pub fn davpath_to_pathbuf(path: &DavPath) -> Utf8PathBuf {
     Utf8PathBuf::from_path_buf(path.as_pathbuf()).unwrap()
 }
 
+/// Obtain the hash for the contents of the file at `path`.
 pub async fn get_file_hash(path: &Utf8Path) -> Result<u64> {
     const BUFF_SIZE: usize = 512;
 

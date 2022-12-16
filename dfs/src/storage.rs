@@ -1,5 +1,4 @@
 use crate::{
-    assume_client,
     client_req::AppClientRequest,
     client_res::AppClientResponse,
     db::{
@@ -15,7 +14,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-    CONFIG, NETWORK, RAFT,
+    util, CONFIG, NETWORK, RAFT,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -70,6 +69,7 @@ impl AppRaftStorage {
         &self,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
+        serial: RaftLogId,
     ) -> Result<AppClientResponse> {
         todo!()
     }
@@ -77,9 +77,9 @@ impl AppRaftStorage {
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
     async fn handle_node_operation(
         &self,
-        serial: RaftLogId,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
+        serial: RaftLogId,
     ) -> Result<AppClientResponse> {
         use NodeToNodeOperation::*;
         match op {
@@ -156,27 +156,16 @@ impl AppRaftStorage {
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No active keeper found for file {:#?}. This probably means the file has been lost.", path))?;
                 Rsync::copy_from(keeper, path).await?;
+                let hash = util::get_file_hash(path).await?;
                 let raft = &RAFT.get().unwrap();
                 let own_id = self.get_own_id();
                 raft.client_write(FileCommitSuccess {
                     serial,
-                    hash: todo!("calculate hash"),
+                    hash,
                     node_id: own_id,
-                    path: *path,
+                    path: path.clone(),
                 })
-                // raft.client_write(AppClientRequest {
-                //     client: own_id,
-                //     serial: todo!("Get serial number from some global counter"),
-                //     operation: Operation::FromNode(FileCommitSuccess {
-                //         serial,
-                //         hash: todo!("calculate hash"),
-                //         node_id: own_id,
-                //         path,
-                //     }),
-                // })
                 .await?;
-
-                // Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
             FileCommitFail {
@@ -292,8 +281,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         let mut tx = db().begin().await?;
         let response = match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
+            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, *index).await,
+            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, *index).await,
         }?;
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
         LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
@@ -308,9 +297,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         let mut tx = db().begin().await?;
         let mut entries = entries.iter().peekable();
         let mut last_entry_id = None;
-        while let Some(&(id, data)) = entries.next() {
+        while let Some(&(&id, data)) = entries.next() {
             let is_last_entry = entries.peek().is_none();
-            last_entry_id = is_last_entry.then_some(*id);
+            last_entry_id = is_last_entry.then_some(id);
 
             // See if this entry has already been applied, and if so, don't apply it again.
             if let Some(LastAppliedEntry { id, .. }) =
@@ -322,11 +311,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             }
 
             let response = match &data.operation {
-                Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
+                Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, id).await,
+                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, id).await,
             }?;
             // Save the response to applying this entry, but don't return it
-            LastAppliedEntries::set(&mut tx, data.client, *id, &response).await?;
+            LastAppliedEntries::set(&mut tx, data.client, id, &response).await?;
         }
 
         // The last operation's id will be committed to the `snapshot_meta` table as the last one applied
