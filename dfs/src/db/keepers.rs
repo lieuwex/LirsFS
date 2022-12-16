@@ -7,6 +7,7 @@ use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
 
+use super::nodes::NodeStatus;
 use crate::util::blob_to_hash;
 
 use super::schema::{Schema, SqlxQuery};
@@ -34,9 +35,10 @@ impl Keepers {
             FROM keepers
             INNER JOIN nodes
                 ON nodes.id = keepers.node_id
-            WHERE path = ? AND active = 1
+            WHERE path = ? AND status = ?
         ",
-            filepath
+            filepath,
+            NodeStatus::Active as i8
         )
         .map(|record| record.node_id as NodeId)
         .fetch(conn)
@@ -46,7 +48,7 @@ impl Keepers {
     }
 
     /// Return the node id for a keeper of the file indicated by `path`,
-    /// or `None` if there is no keeper for this file.
+    /// or `None` if there is no active keeper for this file.
     pub async fn get_random_keeper_for_file(
         conn: &mut SqliteConnection,
         file: &str,
@@ -58,12 +60,13 @@ impl Keepers {
             WHERE id IN (
                 SELECT node_id
                 FROM keepers
-                WHERE path = ? AND active = 1
+                WHERE path = ? AND status = ?
                 ORDER BY RANDOM()
                 LIMIT 1
             );
         ",
-            file
+            file,
+            NodeStatus::Active as i8
         )
         .fetch_optional(conn)
         .await?;
@@ -74,6 +77,7 @@ impl Keepers {
         }
     }
 
+    /// Returns all keepers for the file at `path`. Note that keepers may not be `active` (see [NodeStatus]).
     pub async fn get_by_path(
         conn: &mut SqliteConnection,
         path: &Utf8Path,
