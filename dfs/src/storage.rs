@@ -11,9 +11,11 @@ use async_raft::{
     raft::{Entry, MembershipConfig},
     storage::InitialState,
     storage::{CurrentSnapshotData, HardState},
-    Config, NodeId, RaftStorage,
+    ChangeConfigError, Config, NodeId, RaftStorage,
 };
 use camino::Utf8PathBuf;
+use chrono::offset::Utc;
+use chrono::DateTime;
 use futures::prelude::*;
 use sqlx::{query, Connection, SqliteConnection};
 use thiserror::Error;
@@ -27,6 +29,7 @@ use crate::{
         file::File,
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
+        nodes::{NodeStatus, Nodes},
         raftlog::RaftLog,
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
@@ -216,7 +219,46 @@ impl AppRaftStorage {
                 lost_node,
                 last_contact,
             } => {
-                todo!("Update membership config to remove node, `nodes` and `keepers` table so readers won't try a dead node. Then return the last known contact time to the client.")
+                Nodes::set_node_status_by_id(conn, *lost_node, NodeStatus::Lost).await?;
+                Keepers::delete_keeper(conn, *lost_node).await?;
+
+                let raft = &RAFT.get().unwrap();
+
+                // Change the membership config of the Raft cluster to exclude `lost_node`
+                loop {
+                    let leader = raft.get_leader_or_wait().await;
+                    if self.get_own_id() == leader {
+                        let mut current_members = RaftLog::get_last_membership(conn)
+                            .await?
+                            .ok_or_else(|| anyhow!("Inconsistent raftlog: No membership found"))?
+                            .members;
+                        current_members.remove(lost_node);
+
+                        // In the extremely rare scenario that the current leader was deposed in between `get_leader_or_wait`
+                        // and performing this operation, we will request the new leader and try again
+                        match raft.change_membership(current_members).await {
+                            Ok(_) => break,
+                            Err(err) => match err {
+                                ChangeConfigError::NodeNotLeader(_) => {}
+                                _ => {
+                                    return Err(anyhow!(
+                                        "Could not change membership config: {:#?}",
+                                        err
+                                    )
+                                    .into())
+                                }
+                            },
+                        }
+                    } else {
+                        // This node is not the leader, so the operation is finished
+                        break;
+                    }
+                }
+
+                Ok(format!(
+                    "Last contact: {}",
+                    DateTime::<Utc>::from(*last_contact)
+                ))
             }
             DeleteReplica { path, node_id } => {
                 // Every node deregisters `node_id` as a keeper for this file
@@ -265,7 +307,10 @@ impl AppRaftStorage {
                 File::update_file_hash(conn, path, *hash).await?;
                 Ok(String::new())
             }
-            NodeJoin { node_id } => todo!(),
+            NodeJoin { node_id } => {
+                Nodes::set_node_status_by_id(conn, *node_id, NodeStatus::Active).await?;
+                Ok(String::new())
+            }
             NodeLeft { node_id } => todo!(),
         }
     }

@@ -7,6 +7,7 @@ use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
 
+use super::nodes::NodeStatus;
 use crate::{util::blob_to_hash, RAFT};
 
 use super::schema::{Schema, SqlxQuery};
@@ -21,7 +22,6 @@ pub struct KeepersRow {
 
 pub struct Keepers;
 
-// TODO: Fix duplication in handling UTF8 errors in file paths
 impl Keepers {
     pub async fn get_keeper_ids_for_file(
         conn: &mut SqliteConnection,
@@ -33,9 +33,12 @@ impl Keepers {
             "
             SELECT node_id
             FROM keepers
-            WHERE path = ?
+            INNER JOIN nodes
+                ON nodes.id = keepers.node_id
+            WHERE path = ? AND status = ?
         ",
-            filepath
+            filepath,
+            NodeStatus::Active as i8
         )
         .map(|record| record.node_id as NodeId)
         .fetch(conn)
@@ -44,60 +47,70 @@ impl Keepers {
         Ok(keeper_nodes)
     }
 
-    /// Return the ssh host for a keeper of the file indicated by `path`,
-    /// or `None` if there is no keeper for this file.
+    /// Return the node id for a keeper of the file indicated by `path`,
+    /// or `None` if there is no active keeper for this file.
     pub async fn get_random_keeper_for_file(
         conn: &mut SqliteConnection,
         file: &str,
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<NodeId>> {
         let record = query!(
             "
-            SELECT ssh_host
+            SELECT id
             FROM nodes
             WHERE id IN (
                 SELECT node_id
                 FROM keepers
-                WHERE path = ?
+                WHERE path = ? AND status = ?
                 ORDER BY RANDOM()
                 LIMIT 1
             );
         ",
-            file
+            file,
+            NodeStatus::Active as i8
         )
         .fetch_optional(conn)
         .await?;
         if let Some(record) = record {
-            Ok(Some(record.ssh_host))
+            Ok(Some(record.id as NodeId))
         } else {
             Ok(None)
         }
     }
 
+    /// Returns all keepers for the file at `path`. Note that keepers may not be `active` (see [NodeStatus]).
     pub async fn get_by_path(
         conn: &mut SqliteConnection,
         path: &Utf8Path,
     ) -> Result<Vec<KeepersRow>> {
-        let res: Vec<_> = query("SELECT keepers.* FROM keepers where path = ?1")
-            .bind(path.as_str())
-            .fetch(conn)
-            .map(|r| anyhow::Ok(r?))
-            .and_then(|row: SqliteRow| async move {
-                Ok(KeepersRow {
-                    id: row.get("id"),
-                    path: {
-                        let s: String = row.get("path");
-                        Utf8PathBuf::from(s)
-                    },
-                    node_id: {
-                        let id: i64 = row.get("node_id");
-                        u64::try_from(id)?
-                    },
+        let res: Vec<_> = query(
+            "
+            SELECT keepers.*
+            FROM keepers
+            JOIN nodes
+                ON nodes.id = keepers.node_id
+            WHERE path = ?1
+            ",
+        )
+        .bind(path.as_str())
+        .fetch(conn)
+        .map(|r| anyhow::Ok(r?))
+        .and_then(|row: SqliteRow| async move {
+            Ok(KeepersRow {
+                id: row.get("id"),
+                path: {
+                    let s: String = row.get("path");
+                    Utf8PathBuf::from(s)
+                },
+                node_id: {
+                    let id: i64 = row.get("node_id");
+                    u64::try_from(id)?
+                },
 
-                    hash: blob_to_hash(row.get("hash"))?,
-                })
+                hash: blob_to_hash(row.get("hash"))?,
             })
-            .try_collect()
-            .await?;
+        })
+        .try_collect()
+        .await?;
         Ok(res)
     }
 
@@ -146,6 +159,21 @@ impl Keepers {
 
         let ids = Self::get_keeper_ids_for_file(conn, file_path).await?;
         Ok(ids.contains(&own_id))
+    }
+
+    /// Permanently delete a keeper, e.g. because the node has died.
+    pub async fn delete_keeper(conn: &mut SqliteConnection, node_id: NodeId) -> Result<()> {
+        let node_id = node_id as i64;
+        query!(
+            "
+            DELETE FROM keepers
+            WHERE node_id = ?
+        ",
+            node_id
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
     }
 }
 
