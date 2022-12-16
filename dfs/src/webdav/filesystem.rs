@@ -2,7 +2,6 @@ use anyhow::{anyhow, Ok, Result};
 use async_raft::NodeId;
 use futures::prelude::*;
 use std::time::SystemTime;
-use tarpc::context::Context;
 use webdav_handler::{
     davpath::DavPath,
     fs::{
@@ -41,28 +40,28 @@ impl WebdavFilesystem {
         };
         Ok(res)
     }
-}
 
-async fn assume_keeper(fs: &WebdavFilesystem, path: &DavPath) -> Result<(NodeId, Client)> {
-    let nodes = fs.get_keeper_nodes(path).await?;
+    pub async fn assume_keeper(&self, path: &DavPath) -> Result<(NodeId, Client)> {
+        let nodes = self.get_keeper_nodes(path).await?;
 
-    let (node, client) = stream::select_all(
-        nodes
-            .iter()
-            .map(|&n| {
-                Box::pin(async move {
-                    // TODO: improve error handling
-                    let cl = assume_client!(n);
-                    Ok((n, cl))
+        let (node, client) = stream::select_all(
+            nodes
+                .iter()
+                .map(|&n| {
+                    Box::pin(async move {
+                        // TODO: improve error handling
+                        let cl = assume_client!(n);
+                        Ok((n, cl))
+                    })
                 })
-            })
-            .map(|c| c.into_stream().filter_map(|c| future::ready(c.ok()))),
-    )
-    .next()
-    .await
-    .ok_or_else(|| anyhow!("no nodes available that have the file"))?;
+                .map(|c| c.into_stream().filter_map(|c| future::ready(c.ok()))),
+        )
+        .next()
+        .await
+        .ok_or_else(|| anyhow!("no nodes available that have the file"))?;
 
-    Ok((node, client))
+        Ok((node, client))
+    }
 }
 
 fn do_fs<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
@@ -96,19 +95,16 @@ where
     ERR: Into<anyhow::Error>,
 {
     do_fs(move || async move {
-        let (node, client) = assume_keeper(fs, path).await?;
+        let (node, client) = fs.assume_keeper(path).await?;
         f(node, client, path).await.map_err(|e| e.into())
     })
 }
 
 impl DavFileSystem for WebdavFilesystem {
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
-        do_fs_file(self, path, move |node, client, path| async move {
-            let path = davpath_to_pathbuf(path);
-
-            let uuid = client.open(Context::current(), path).await?;
-
-            let res = FilePointer::new(node, uuid);
+        let path = path.clone();
+        do_fs(move || async move {
+            let res = FilePointer::new(path);
             let res: Box<dyn DavFile> = Box::new(res);
             Ok(res)
         })

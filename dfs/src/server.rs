@@ -3,12 +3,11 @@ use std::net::SocketAddr;
 use async_raft::raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse};
 use camino::Utf8PathBuf;
 use tarpc::context::Context;
-use uuid::Uuid;
 
 use crate::{
     service::Service,
-    webdav::{DirEntry, FileMetadata, SeekFrom},
-    FILE_SYSTEM, RAFT,
+    webdav::{DirEntry, SeekFrom},
+    FILE_SYSTEM, RAFT, STORAGE,
 };
 
 #[derive(Debug, Clone)]
@@ -45,37 +44,24 @@ impl Service for Server {
 
     async fn ping(self, _: Context) {}
 
-    async fn open(self, _: Context, path: Utf8PathBuf) -> Uuid {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.open(path).await.unwrap()
-    }
     async fn read_dir(self, _: Context, path: Utf8PathBuf) -> Vec<DirEntry> {
-        let fs = FILE_SYSTEM.lock().await;
-        fs.read_dir(path).await.unwrap()
+        FILE_SYSTEM.read_dir(path).await.unwrap()
     }
-    async fn metadata(self, _: Context, path: Utf8PathBuf) -> FileMetadata {
-        let fs = FILE_SYSTEM.lock().await;
-        fs.metadata(path).await.unwrap()
-    }
+    async fn read_bytes(
+        self,
+        _: Context,
+        path: Utf8PathBuf,
+        pos: SeekFrom,
+        count: usize,
+    ) -> Vec<u8> {
+        let storage = STORAGE.get().unwrap();
+        let lock = storage.get_queue().get_read(path.clone()).await;
 
-    async fn file_metadata(self, _: Context, file_id: Uuid) -> FileMetadata {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.file_metadata(file_id).await.unwrap()
-    }
-    async fn write_bytes(self, _: Context, file_id: Uuid, buf: Vec<u8>) -> () {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.write_bytes(file_id, &buf).await.unwrap()
-    }
-    async fn read_bytes(self, _: Context, file_id: Uuid, count: usize) -> Vec<u8> {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.read_bytes(file_id, count).await.unwrap()
-    }
-    async fn seek(self, _: Context, file_id: Uuid, pos: SeekFrom) -> u64 {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.seek(file_id, pos.into()).await.unwrap()
-    }
-    async fn flush(self, _: Context, file_id: Uuid) -> () {
-        let mut fs = FILE_SYSTEM.lock().await;
-        fs.flush(file_id).await.unwrap()
+        let pos: std::io::SeekFrom = pos.into();
+
+        FILE_SYSTEM
+            .read_bytes(&lock, path, pos, count)
+            .await
+            .unwrap()
     }
 }

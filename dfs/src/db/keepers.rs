@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
 
 use super::nodes::NodeStatus;
-use crate::util::blob_to_hash;
+use crate::{util::blob_to_hash, RAFT};
 
 use super::schema::{Schema, SqlxQuery};
 
@@ -150,6 +150,15 @@ impl Keepers {
         .execute(conn)
         .await?;
         Ok(())
+    }
+
+    /// Return whether or not we are a keeper of the file at `file_path`.
+    pub async fn is_self_keeper(conn: &mut SqliteConnection, file_path: &Utf8Path) -> Result<bool> {
+        let raft = RAFT.get().unwrap();
+        let own_id = raft.metrics().borrow().id;
+
+        let ids = Self::get_keeper_ids_for_file(conn, file_path).await?;
+        Ok(ids.contains(&own_id))
     }
 
     /// Permanently delete a keeper, e.g. because the node has died.

@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS keepers (
 
     -- latest calculated hash for this file for this keeper.
     -- hash is in big-endian byte order.
-    hash                blob not null,
+    hash                blob,
 
     FOREIGN KEY(node_id) REFERENCES nodes(id)
     FOREIGN KEY(path) REFERENCES files(path)

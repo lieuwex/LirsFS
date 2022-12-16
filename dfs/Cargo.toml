@@ -2,6 +2,7 @@
 name = "dfs"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.66"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htmls
 
@@ -35,4 +36,7 @@ uuid = { version = "1.2.2", features = ["v4", "serde"] }
 rand = "0.8.5"
 
 camino = { version = "1.1.1", features = ["serde1"] }
+
 chrono = "0.4.23"
+
+twox-hash = { version = "1.6.3", features = ["serde"] }

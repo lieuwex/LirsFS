@@ -50,6 +50,7 @@ pub fn db() -> &'static Database {
     DB.get().unwrap().borrow()
 }
 
+/// Acquire a database connection from the global connection pool.
 #[macro_export]
 macro_rules! db_conn {
     () => {

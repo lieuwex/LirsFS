@@ -1,21 +1,10 @@
-use crate::{
-    client_req::AppClientRequest,
-    client_res::AppClientResponse,
-    db::{
-        self, curr_snapshot, db,
-        file::File,
-        keepers::Keepers,
-        last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
-        nodes::{NodeStatus, Nodes},
-        raftlog::{RaftLog, RaftLogId},
-        schema::Schema,
-        snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
-    },
-    db_conn,
-    operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
-    rsync::Rsync,
-    CONFIG, RAFT,
+use std::{
+    fmt::Display,
+    io::{ErrorKind, SeekFrom},
+    iter,
+    sync::Arc,
 };
+
 use anyhow::{anyhow, Result};
 use async_raft::{
     async_trait::async_trait,
@@ -24,13 +13,33 @@ use async_raft::{
     storage::{CurrentSnapshotData, HardState},
     ChangeConfigError, Config, NodeId, RaftStorage,
 };
+use camino::Utf8PathBuf;
 use chrono::offset::Utc;
 use chrono::DateTime;
-use futures::TryStreamExt;
-use sqlx::{query, SqliteConnection};
-use std::{fmt::Display, io::ErrorKind, iter::once, sync::Arc};
+use futures::prelude::*;
+use sqlx::{query, Connection, SqliteConnection};
 use thiserror::Error;
 use tokio::fs::OpenOptions;
+
+use crate::{
+    client_req::AppClientRequest,
+    client_res::{AppClientResponse, ClientError},
+    db::{
+        self, curr_snapshot, db,
+        file::File,
+        keepers::Keepers,
+        last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
+        nodes::{NodeStatus, Nodes},
+        raftlog::RaftLog,
+        schema::Schema,
+        snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
+    },
+    db_conn,
+    operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
+    queue::Queue,
+    rsync::Rsync,
+    CONFIG, FILE_SYSTEM, RAFT,
+};
 
 #[derive(Error, Debug)]
 pub struct AppError {
@@ -46,15 +55,69 @@ impl Display for AppError {
 #[derive(Debug)]
 pub struct AppRaftStorage {
     config: Arc<Config>,
+    queue: Arc<Queue>,
+}
+
+fn do_commit<'a, Fun, FunRet, ERR>(
+    serial: u64,
+    path: Utf8PathBuf,
+    am_keeper: bool,
+    f: Fun,
+) -> impl Future<Output = Result<String, ClientError>>
+where
+    Fun: (FnOnce() -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<(String, Option<u64>), ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    async move {
+        let res = async {
+            let res = f().await.map_err(|e| e.into())?;
+            Ok(res)
+        }
+        .await;
+
+        let raft = RAFT.get().unwrap();
+
+        let send_res = match (am_keeper, &res) {
+            (true, &Ok((_, hash))) => {
+                raft.client_write(NodeToNodeOperation::FileCommitSuccess {
+                    serial,
+                    hash,
+                    node_id: CONFIG.get_own_id(),
+                    path,
+                })
+                .await?;
+                Ok(())
+            }
+            (true, Err(e)) => {
+                raft.client_write(NodeToNodeOperation::FileCommitFail {
+                    serial,
+                    failure_reason: format!("{:?}", e),
+                })
+                .await?;
+                Ok(())
+            }
+            _ => Ok(()),
+        };
+
+        match (res, send_res) {
+            (Ok((r, _)), Ok(_)) => Ok(r),
+            (Ok(_), Err(e)) => Err(e),
+            (Err(e), _) => Err(e),
+        }
+    }
 }
 
 impl AppRaftStorage {
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+        Self {
+            config,
+            queue: Queue::new(),
+        }
     }
 
     pub fn get_own_id(&self) -> NodeId {
-        CONFIG.node_id
+        CONFIG.get_own_id()
     }
 
     async fn read_hard_state(&self) -> Result<Option<HardState>> {
@@ -64,21 +127,92 @@ impl AppRaftStorage {
         Ok(hardstate)
     }
 
+    pub fn get_queue(&self) -> Arc<Queue> {
+        self.queue.clone()
+    }
+
     /// Handle a [ClientToNodeOperation], possibly mutating the file registry.
     async fn handle_client_operation(
         &self,
+        serial: u64,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
-    ) -> Result<AppClientResponse> {
-        todo!()
+    ) -> Result<String, ClientError> {
+        match op {
+            ClientToNodeOperation::CreateFile {
+                path,
+                replication_factor,
+                initial_keepers,
+            } => {
+                let am_keeper = initial_keepers.contains(&self.get_own_id());
+
+                do_commit(serial, path.clone(), am_keeper, move || async move {
+                    let mut tx = conn.begin().await?;
+                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
+
+                    let path = File::create_file(&mut tx, path.clone(), *replication_factor)
+                        .await?
+                        .file_path;
+
+                    for &node_id in initial_keepers {
+                        Keepers::add_keeper_for_file(&mut tx, path.as_str(), node_id).await?;
+                    }
+
+                    if am_keeper {
+                        FILE_SYSTEM.create_file(&lock, path).await?;
+                    }
+
+                    tx.commit().await?;
+
+                    anyhow::Ok(if am_keeper {
+                        ("created file".into(), None)
+                    } else {
+                        ("am not a keeper".into(), None)
+                    })
+                })
+                .await
+            }
+            ClientToNodeOperation::CreateDir { path } => {
+                File::create_dir(conn, path.clone()).await?;
+                Ok("created dir".into())
+            }
+
+            ClientToNodeOperation::Write {
+                path,
+                offset,
+                contents,
+            } => {
+                let am_keeper = Keepers::is_self_keeper(conn, path).await?;
+                do_commit(serial, path.clone(), am_keeper, move || async move {
+                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
+
+                    let res = if am_keeper {
+                        FILE_SYSTEM
+                            .write_bytes(&lock, path, SeekFrom::Start(*offset), &contents)
+                            .await?;
+
+                        let hash = FILE_SYSTEM.get_hash(&(&lock).into(), path).await?;
+
+                        (format!("written {} bytes", contents.len()), Some(hash))
+                    } else {
+                        ("am not a keeper".into(), None)
+                    };
+                    anyhow::Ok(res)
+                })
+                .await
+            }
+
+            _ => todo!(),
+        }
     }
 
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
     async fn handle_node_operation(
         &self,
+        serial: u64,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
-    ) -> Result<AppClientResponse> {
+    ) -> Result<String, ClientError> {
         use NodeToNodeOperation::*;
         match op {
             NodeLost {
@@ -110,7 +244,8 @@ impl AppRaftStorage {
                                     return Err(anyhow!(
                                         "Could not change membership config: {:#?}",
                                         err
-                                    ))
+                                    )
+                                    .into())
                                 }
                             },
                         }
@@ -120,10 +255,10 @@ impl AppRaftStorage {
                     }
                 }
 
-                Ok(AppClientResponse(Ok(format!(
+                Ok(format!(
                     "Last contact: {}",
                     DateTime::<Utc>::from(*last_contact)
-                ))))
+                ))
             }
             DeleteReplica { path, node_id } => {
                 // Every node deregisters `node_id` as a keeper for this file
@@ -132,16 +267,16 @@ impl AppRaftStorage {
                 if self.get_own_id() == *node_id {
                     tokio::fs::remove_file(path).await?;
                 }
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
             StoreReplica { path, node_id } => {
                 if self.get_own_id() != *node_id {
-                    return Ok(AppClientResponse(Ok(format!(
+                    return Ok(format!(
                         "I (node_id: {}) am not the target of this operation",
                         node_id
-                    ))));
+                    ));
                 }
                 // TODO: In case of `rsync` errors, try other keepers until we find one that works
                 // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
@@ -155,7 +290,7 @@ impl AppRaftStorage {
                 .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
                 Rsync::copy_from(keeper, path).await?;
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
             FileCommitFail {
                 serial,
@@ -169,12 +304,12 @@ impl AppRaftStorage {
                 path,
             } => {
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
-                File::update_file_hash(conn, path, Some(*hash)).await?;
-                Ok(AppClientResponse(Ok("".into())))
+                File::update_file_hash(conn, path, *hash).await?;
+                Ok(String::new())
             }
             NodeJoin { node_id } => {
                 Nodes::set_node_status_by_id(conn, *node_id, NodeStatus::Active).await?;
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
             NodeLeft { node_id } => todo!(),
         }
@@ -270,9 +405,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         let mut tx = db().begin().await?;
         let response = match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
-        }?;
+            Operation::FromClient(op) => {
+                self.handle_client_operation(data.serial, op, &mut tx).await
+            }
+            Operation::FromNode(op) => self.handle_node_operation(data.serial, op, &mut tx).await,
+        };
+        let response = AppClientResponse(response);
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
         LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
         tx.commit().await?;
@@ -300,9 +438,14 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             }
 
             let response = match &data.operation {
-                Operation::FromClient(op) => self.handle_client_operation(op, &mut tx).await,
-                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx).await,
-            }?;
+                Operation::FromClient(op) => {
+                    self.handle_client_operation(data.serial, op, &mut tx).await
+                }
+                Operation::FromNode(op) => {
+                    self.handle_node_operation(data.serial, op, &mut tx).await
+                }
+            };
+            let response = AppClientResponse(response);
             // Save the response to applying this entry, but don't return it
             LastAppliedEntries::set(&mut tx, data.client, *id, &response).await?;
         }
@@ -425,7 +568,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         RaftLog::insert(
             &mut tx,
-            once(&Entry::new_snapshot_pointer(index, term, id, membership)),
+            iter::once(&Entry::new_snapshot_pointer(index, term, id, membership)),
         )
         .await;
 
