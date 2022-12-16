@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use sqlx::Either;
 use tokio::sync::{
     oneshot, MappedMutexGuard, Mutex, MutexGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard,
@@ -53,6 +53,20 @@ impl Queue {
     async fn entry(&self, path: Utf8PathBuf) -> MappedMutexGuard<QueueItem> {
         let lock = self.items.lock().await;
         MutexGuard::try_map(lock, |items| Some(items.entry(path).or_default())).unwrap()
+    }
+
+    // REVIEW: should this only be called on success?
+    /// Mark the write command `serial` as finished.
+    pub async fn write_committed(&self, path: &Utf8Path, serial: u64) -> Result<()> {
+        let mut items = self.items.lock().await;
+
+        if let Some(item) = items.get_mut(path) {
+            if let Some(waiter) = item.waiters.remove(&serial) {
+                waiter.send(())?;
+            }
+        }
+
+        Ok(())
     }
 
     // TODO: we should submit get_write jobs on startup when knowingly waiting for jobs to finish
