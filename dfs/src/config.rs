@@ -5,6 +5,8 @@ use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 
+use crate::RAFT;
+
 fn default_file_dir() -> Utf8PathBuf {
     if cfg!(debug_assertions) {
         Utf8PathBuf::from("/tmp/db/files")
@@ -93,5 +95,18 @@ impl Config {
     /// which will complete the installation.
     pub fn blank_file_registry_snapshot(&self) -> Utf8PathBuf {
         self.file_registry_snapshot.with_extension("db.blank")
+    }
+
+    pub fn get_own_id(&self) -> NodeId {
+        // This is just a debug assert to make sure my understanding is correct.
+        // We use CONFIG.node_id and raft_own_id interchangeably in the code, so it has to be
+        // correct, otherwise code is broken.
+        // This is a nice place to test the assertion.
+        if cfg!(debug_assertions) {
+            let raft_own_id = RAFT.get().unwrap().metrics().borrow().id;
+            assert_eq!(self.node_id, raft_own_id);
+        }
+
+        self.node_id
     }
 }
