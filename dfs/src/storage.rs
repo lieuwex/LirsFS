@@ -58,53 +58,51 @@ pub struct AppRaftStorage {
     queue: Arc<Queue>,
 }
 
-fn do_commit<'a, Fun, FunRet, ERR>(
+async fn do_commit<'a, Fun, FunRet, ERR>(
     serial: u64,
     path: Utf8PathBuf,
     am_keeper: bool,
     f: Fun,
-) -> impl Future<Output = Result<String, ClientError>>
+) -> Result<String, ClientError>
 where
     Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<(String, Option<u64>), ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
-    async move {
-        let res = async {
-            let res = f().await.map_err(|e| e.into())?;
-            Ok(res)
+    let res = async {
+        let res = f().await.map_err(|e| e.into())?;
+        Ok(res)
+    }
+    .await;
+
+    let raft = RAFT.get().unwrap();
+
+    let send_res = match (am_keeper, &res) {
+        (true, &Ok((_, hash))) => {
+            raft.client_write(NodeToNodeOperation::FileCommitSuccess {
+                serial,
+                hash,
+                node_id: CONFIG.get_own_id(),
+                path,
+            })
+            .await?;
+            Ok(())
         }
-        .await;
-
-        let raft = RAFT.get().unwrap();
-
-        let send_res = match (am_keeper, &res) {
-            (true, &Ok((_, hash))) => {
-                raft.client_write(NodeToNodeOperation::FileCommitSuccess {
-                    serial,
-                    hash,
-                    node_id: CONFIG.get_own_id(),
-                    path,
-                })
-                .await?;
-                Ok(())
-            }
-            (true, Err(e)) => {
-                raft.client_write(NodeToNodeOperation::FileCommitFail {
-                    serial,
-                    failure_reason: format!("{:?}", e),
-                })
-                .await?;
-                Ok(())
-            }
-            _ => Ok(()),
-        };
-
-        match (res, send_res) {
-            (Ok((r, _)), Ok(_)) => Ok(r),
-            (Ok(_), Err(e)) => Err(e),
-            (Err(e), _) => Err(e),
+        (true, Err(e)) => {
+            raft.client_write(NodeToNodeOperation::FileCommitFail {
+                serial,
+                failure_reason: format!("{:?}", e),
+            })
+            .await?;
+            Ok(())
         }
+        _ => Ok(()),
+    };
+
+    match (res, send_res) {
+        (Ok((r, _)), Ok(_)) => Ok(r),
+        (Ok(_), Err(e)) => Err(e),
+        (Err(e), _) => Err(e),
     }
 }
 
