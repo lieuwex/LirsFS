@@ -52,7 +52,7 @@ pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
 pub static STORAGE: OnceCell<Arc<AppRaftStorage>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
-async fn run_app(raft: &RaftApp) -> ! {
+async fn run_app(raft: RaftApp) -> ! {
     let mut server_task: Option<JoinHandle<()>> = None;
 
     let mut metrics = raft.app.metrics().clone();
@@ -120,9 +120,9 @@ async fn main() {
     let raft = RaftApp::new(Raft::new(node_id, raft_config, network.clone(), storage));
 
     NETWORK.set(network).unwrap();
-    RAFT.set(raft).unwrap();
+    RAFT.set(raft.clone()).unwrap();
 
-    run_app(RAFT.get().unwrap()).await; // This is subjective. Do it your own way.
-                                        // Just run your app, feeding Raft & client
-                                        // RPCs into the Raft node as they arrive.
+    run_app(raft).await; // This is subjective. Do it your own way.
+                         // Just run your app, feeding Raft & client
+                         // RPCs into the Raft node as they arrive.
 }
