@@ -6,7 +6,7 @@ use crate::{
         file::File,
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
-        nodes::Nodes,
+        nodes::{NodeStatus, Nodes},
         raftlog::{RaftLog, RaftLogId},
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
@@ -85,7 +85,7 @@ impl AppRaftStorage {
                 lost_node,
                 last_contact,
             } => {
-                Nodes::deactivate_node_by_id(conn, *lost_node).await?;
+                Nodes::set_node_status_by_id(conn, *lost_node, NodeStatus::Lost).await?;
                 Keepers::delete_keeper(conn, *lost_node).await?;
 
                 let raft = &RAFT.get().unwrap();
@@ -172,7 +172,10 @@ impl AppRaftStorage {
                 File::update_file_hash(conn, path, Some(*hash)).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
-            NodeJoin { node_id } => todo!(),
+            NodeJoin { node_id } => {
+                Nodes::set_node_status_by_id(conn, *node_id, NodeStatus::Active).await?;
+                Ok(AppClientResponse(Ok("".into())))
+            }
             NodeLeft { node_id } => todo!(),
         }
     }
