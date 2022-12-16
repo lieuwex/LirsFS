@@ -7,7 +7,7 @@ use async_raft::{
         AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
-    Config, RaftNetwork,
+    Config, NodeId, RaftNetwork,
 };
 use tarpc::context;
 
@@ -31,7 +31,7 @@ impl AppRaftNetwork {
         Self { nodes }
     }
 
-    pub fn assume_node(&self, node_id: u64) -> Result<&NodeConnection> {
+    pub fn assume_node(&self, node_id: NodeId) -> Result<&NodeConnection> {
         self.nodes
             .get(&node_id)
             .ok_or_else(|| anyhow!("no node {} known", node_id))
