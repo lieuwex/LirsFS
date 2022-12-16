@@ -82,6 +82,8 @@ impl Queue {
     // TODO: we should submit get_write jobs on startup when knowingly waiting for jobs to finish
     // in the `outstanding_writes` table.
 
+    // TODO: also place write job in the `outstanding_writes` table.
+
     /// Submit and hold a write lock for the file at `path` for write command `serial`.
     /// This function will wait until a write lock is acquired.
     /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
