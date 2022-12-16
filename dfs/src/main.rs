@@ -78,6 +78,9 @@ async fn run_app(raft: &RaftApp) -> ! {
 
 #[tokio::main]
 async fn main() {
+    let _ = dotenv::dotenv();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
