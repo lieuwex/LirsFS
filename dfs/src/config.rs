@@ -103,8 +103,10 @@ impl Config {
         // correct, otherwise code is broken.
         // This is a nice place to test the assertion.
         if cfg!(debug_assertions) {
-            let raft_own_id = RAFT.get().unwrap().metrics().borrow().id;
-            assert_eq!(self.node_id, raft_own_id);
+            if let Some(raft) = RAFT.get() {
+                let raft_own_id = raft.metrics().borrow().id;
+                assert_eq!(self.node_id, raft_own_id);
+            }
         }
 
         self.node_id
