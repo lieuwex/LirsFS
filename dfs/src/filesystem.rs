@@ -43,6 +43,16 @@ impl FileSystem {
         CONFIG.file_dir.join(path)
     }
 
+    pub async fn create_file(&self, _: &QueueWriteHandle, path: Utf8PathBuf) -> Result<File> {
+        let path = self.map_path(path);
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .await?;
+        Ok(file)
+    }
+
     pub async fn read_dir(&self, path: Utf8PathBuf) -> Result<Vec<DirEntry>> {
         let path = self.map_path(path);
 

@@ -16,7 +16,7 @@ use async_raft::{
 };
 use camino::Utf8PathBuf;
 use futures::prelude::*;
-use sqlx::{query, SqliteConnection};
+use sqlx::{query, Connection, SqliteConnection};
 use thiserror::Error;
 use tokio::{
     fs::OpenOptions,
@@ -162,6 +162,56 @@ pub struct AppRaftStorage {
     queue: Arc<Queue>,
 }
 
+fn do_commit<'a, Fun, FunRet, ERR>(
+    serial: u64,
+    path: Utf8PathBuf,
+    am_keeper: bool,
+    f: Fun,
+) -> impl Future<Output = Result<String, ClientError>>
+where
+    Fun: (FnOnce() -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<String, ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    async move {
+        let res = async {
+            let res = f().await.map_err(|e| e.into())?;
+            Ok(res)
+        }
+        .await;
+
+        let raft = RAFT.get().unwrap();
+
+        let send_res = match (am_keeper, &res) {
+            (true, Ok(_)) => {
+                raft.client_write(NodeToNodeOperation::FileCommitSuccess {
+                    serial,
+                    hash: None,
+                    node_id: CONFIG.get_own_id(),
+                    path,
+                })
+                .await?;
+                Ok(())
+            }
+            (true, Err(e)) => {
+                raft.client_write(NodeToNodeOperation::FileCommitFail {
+                    serial,
+                    failure_reason: format!("{:?}", e),
+                })
+                .await?;
+                Ok(())
+            }
+            _ => Ok(()),
+        };
+
+        match (res, send_res) {
+            (Ok(r), Ok(_)) => Ok(r),
+            (Ok(_), Err(e)) => Err(e),
+            (Err(e), _) => Err(e),
+        }
+    }
+}
+
 impl AppRaftStorage {
     pub fn new(config: Arc<Config>) -> Self {
         Self {
@@ -193,6 +243,43 @@ impl AppRaftStorage {
         conn: &mut SqliteConnection,
     ) -> Result<String, ClientError> {
         match op {
+            ClientToNodeOperation::CreateFile {
+                path,
+                replication_factor,
+                initial_keepers,
+            } => {
+                let am_keeper = initial_keepers.contains(&self.get_own_id());
+
+                do_commit(serial, path.clone(), am_keeper, move || async move {
+                    let mut tx = conn.begin().await?;
+                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
+
+                    let path = File::create_file(&mut tx, path.clone(), *replication_factor)
+                        .await?
+                        .file_path;
+
+                    for &node_id in initial_keepers {
+                        Keepers::add_keeper_for_file(&mut tx, path.as_str(), node_id).await?;
+                    }
+
+                    if am_keeper {
+                        FILE_SYSTEM.create_file(&lock, path).await?;
+                    }
+
+                    tx.commit().await?;
+
+                    anyhow::Ok(
+                        if am_keeper {
+                            "created file"
+                        } else {
+                            "am not a keeper"
+                        }
+                        .into(),
+                    )
+                })
+                .await
+            }
+
             ClientToNodeOperation::Write {
                 path,
                 offset,
