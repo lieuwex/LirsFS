@@ -46,7 +46,11 @@ impl FileSystem {
         CONFIG.file_dir.join(path)
     }
 
-    pub async fn create_file(&self, _: &QueueWriteHandle, path: Utf8PathBuf) -> Result<File> {
+    pub async fn create_file(
+        &self,
+        _: &QueueWriteHandle,
+        path: impl AsRef<Utf8Path>,
+    ) -> Result<File> {
         let path = self.map_path(path);
         let file = OpenOptions::new()
             .write(true)
@@ -56,7 +60,7 @@ impl FileSystem {
         Ok(file)
     }
 
-    pub async fn read_dir(&self, path: Utf8PathBuf) -> Result<Vec<DirEntry>> {
+    pub async fn read_dir(&self, path: impl AsRef<Utf8Path>) -> Result<Vec<DirEntry>> {
         let path = self.map_path(path);
 
         let mut res = Vec::new();
@@ -71,7 +75,7 @@ impl FileSystem {
     pub async fn write_bytes(
         &self,
         _: &QueueWriteHandle,
-        path: Utf8PathBuf,
+        path: impl AsRef<Utf8Path>,
         pos: SeekFrom,
         buf: &[u8],
     ) -> Result<()> {
@@ -88,7 +92,7 @@ impl FileSystem {
     pub async fn read_bytes(
         &self,
         _: &QueueReadHandle<'_>,
-        path: Utf8PathBuf,
+        path: impl AsRef<Utf8Path>,
         pos: SeekFrom,
         count: usize,
     ) -> Result<Vec<u8>> {

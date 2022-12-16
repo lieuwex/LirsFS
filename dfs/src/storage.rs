@@ -181,7 +181,7 @@ impl AppRaftStorage {
 
                     let res = if am_keeper {
                         FILE_SYSTEM
-                            .write_bytes(&lock, path.clone(), SeekFrom::Start(*offset), &contents)
+                            .write_bytes(&lock, path, SeekFrom::Start(*offset), &contents)
                             .await?;
 
                         let hash = FILE_SYSTEM.get_hash(&(&lock).into(), path).await?;
