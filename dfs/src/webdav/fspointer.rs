@@ -59,7 +59,7 @@ impl DavFileSystem for FsPointer {
     }
 
     fn set_modified<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
-        todo!()
+        self.0.set_modified(path, tm)
     }
 
     fn have_props<'a>(
