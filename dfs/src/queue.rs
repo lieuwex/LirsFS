@@ -11,6 +11,10 @@ use tokio::sync::{
     OwnedRwLockWriteGuard, RwLock,
 };
 
+/// A read handle to a file in the queue.
+// Either::Left means that we own a plain lock read in the queue.
+// Either::Right is a reference to a write handle, so that we can coerce a write handle to a read
+// handle, which is obviosuly correct.
 pub struct QueueReadHandle<'a>(Either<OwnedRwLockReadGuard<()>, &'a QueueWriteHandle>);
 
 impl<'a> From<&'a QueueWriteHandle> for QueueReadHandle<'a> {
@@ -19,6 +23,9 @@ impl<'a> From<&'a QueueWriteHandle> for QueueReadHandle<'a> {
     }
 }
 
+/// A write handle to a file in the queue.
+// The reason we have an Option here is to allow us to send the value in the drop function, `send`
+// consumes the sender, but we only get a `&mut self` reference in the `drop` function.
 pub struct QueueWriteHandle(Option<oneshot::Sender<()>>);
 
 impl QueueWriteHandle {
