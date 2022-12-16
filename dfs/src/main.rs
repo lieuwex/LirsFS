@@ -28,6 +28,7 @@ mod rpc;
 mod filesystem;
 mod network;
 mod operation;
+mod queue;
 mod raft_app;
 mod rsync;
 mod server;

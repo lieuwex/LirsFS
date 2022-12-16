@@ -13,7 +13,7 @@ use twox_hash::XxHash64;
 use uuid::Uuid;
 
 use crate::{
-    storage::{QueueReadHandle, QueueWriteHandle},
+    queue::{QueueReadHandle, QueueWriteHandle},
     webdav::DirEntry,
     CONFIG,
 };
