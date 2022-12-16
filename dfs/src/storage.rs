@@ -61,15 +61,16 @@ struct QueueItem {
     waiters: HashMap<u64, oneshot::Sender<()>>,
 }
 
-struct QueueHandle(Option<oneshot::Sender<()>>);
+pub struct QueueReadHandle(OwnedRwLockReadGuard<()>);
+pub struct QueueWriteHandle(Option<oneshot::Sender<()>>);
 
-impl QueueHandle {
+impl QueueWriteHandle {
     fn new(tx: oneshot::Sender<()>) -> Self {
         Self(Some(tx))
     }
 }
 
-impl Drop for QueueHandle {
+impl Drop for QueueWriteHandle {
     fn drop(&mut self) {
         if let Some(tx) = self.0.take() {
             let _ = tx.send(());
@@ -78,8 +79,8 @@ impl Drop for QueueHandle {
 }
 
 #[derive(Debug)]
-struct Queue {
-    pub items: Mutex<HashMap<Utf8PathBuf, QueueItem>>,
+pub struct Queue {
+    items: Mutex<HashMap<Utf8PathBuf, QueueItem>>,
 }
 
 impl Queue {
@@ -100,7 +101,11 @@ impl Queue {
     /// Submit and hold a write lock for the file at `path` for write command `serial`.
     /// This function will wait until a write lock is acquired.
     /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
-    pub async fn get_write(self: Arc<Self>, path: Utf8PathBuf, serial: u64) -> Result<QueueHandle> {
+    pub async fn get_write(
+        self: Arc<Self>,
+        path: Utf8PathBuf,
+        serial: u64,
+    ) -> Result<QueueWriteHandle> {
         // channel to indicate that the caller of `get_write` is finished with the lock.
         let (htx, hrx) = oneshot::channel();
 
@@ -139,15 +144,15 @@ impl Queue {
         lrx.await?;
 
         // Return a QueueHandle, if this is dropped we mark hrx as ready.
-        Ok(QueueHandle::new(htx))
+        Ok(QueueWriteHandle::new(htx))
     }
 
-    pub async fn get_read(&self, path: Utf8PathBuf) -> OwnedRwLockReadGuard<()> {
+    pub async fn get_read(&self, path: Utf8PathBuf) -> QueueReadHandle {
         let lock = {
             let entry = self.entry(path).await;
             entry.lock.clone()
         };
-        lock.read_owned().await
+        QueueReadHandle(lock.read_owned().await)
     }
 }
 
@@ -197,7 +202,7 @@ impl AppRaftStorage {
 
                 if Keepers::is_self_keeper(db_conn!(), path).await? {
                     FILE_SYSTEM
-                        .write_bytes(path.clone(), SeekFrom::Start(*offset), &contents)
+                        .write_bytes(&lock, path.clone(), SeekFrom::Start(*offset), &contents)
                         .await?;
                     Ok(format!("written {} bytes", contents.len()).into())
                 } else {

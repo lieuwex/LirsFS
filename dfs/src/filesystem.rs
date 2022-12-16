@@ -8,7 +8,11 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::{webdav::DirEntry, CONFIG};
+use crate::{
+    storage::{QueueReadHandle, QueueWriteHandle},
+    webdav::DirEntry,
+    CONFIG,
+};
 
 pub type Result<T> = std::result::Result<T, FileSystemError>;
 
@@ -51,7 +55,13 @@ impl FileSystem {
         Ok(res)
     }
 
-    pub async fn write_bytes(&self, path: Utf8PathBuf, pos: SeekFrom, buf: &[u8]) -> Result<()> {
+    pub async fn write_bytes(
+        &self,
+        _: &QueueWriteHandle,
+        path: Utf8PathBuf,
+        pos: SeekFrom,
+        buf: &[u8],
+    ) -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -64,6 +74,7 @@ impl FileSystem {
     }
     pub async fn read_bytes(
         &self,
+        _: &QueueReadHandle,
         path: Utf8PathBuf,
         pos: SeekFrom,
         count: usize,

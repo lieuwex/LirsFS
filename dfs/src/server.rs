@@ -7,7 +7,7 @@ use tarpc::context::Context;
 use crate::{
     service::Service,
     webdav::{DirEntry, SeekFrom},
-    FILE_SYSTEM, RAFT,
+    FILE_SYSTEM, RAFT, STORAGE,
 };
 
 #[derive(Debug, Clone)]
@@ -54,7 +54,14 @@ impl Service for Server {
         pos: SeekFrom,
         count: usize,
     ) -> Vec<u8> {
+        let storage = STORAGE.get().unwrap();
+        let lock = storage.get_queue().get_read(path.clone()).await;
+
         let pos: std::io::SeekFrom = pos.into();
-        FILE_SYSTEM.read_bytes(path, pos, count).await.unwrap()
+
+        FILE_SYSTEM
+            .read_bytes(&lock, path, pos, count)
+            .await
+            .unwrap()
     }
 }
