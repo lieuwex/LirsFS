@@ -200,7 +200,7 @@ impl AppRaftStorage {
             } => {
                 let lock = self.get_queue().get_write(path.clone(), serial).await?;
 
-                if Keepers::is_self_keeper(db_conn!(), path).await? {
+                if Keepers::is_self_keeper(conn, path).await? {
                     FILE_SYSTEM
                         .write_bytes(&lock, path.clone(), SeekFrom::Start(*offset), &contents)
                         .await?;
