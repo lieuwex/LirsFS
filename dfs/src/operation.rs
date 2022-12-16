@@ -63,8 +63,8 @@ pub enum NodeToNodeOperation {
     FileCommitSuccess {
         /// The serial number of the operation to which this commit refers to.
         serial: u64,
-        /// XxHash64 value for the whole file content at this point.
-        hash: u64,
+        /// XxHash64 value for the whole file content at this point, if any.
+        hash: Option<u64>,
         /// The node this file was committed on
         node_id: NodeId,
         /// Path of the file that was committed

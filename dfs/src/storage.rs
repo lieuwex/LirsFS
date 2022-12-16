@@ -273,7 +273,7 @@ impl AppRaftStorage {
                 path,
             } => {
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
-                File::update_file_hash(conn, path, Some(*hash)).await?;
+                File::update_file_hash(conn, path, *hash).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
             NodeJoin { node_id } => todo!(),
