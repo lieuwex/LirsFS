@@ -158,16 +158,22 @@ impl AppRaftStorage {
                 Rsync::copy_from(keeper, path).await?;
                 let raft = &RAFT.get().unwrap();
                 let own_id = self.get_own_id();
-                raft.client_write(AppClientRequest {
-                    client: own_id,
-                    serial: todo!("Get serial number from some global counter"),
-                    operation: Operation::FromNode(FileCommitSuccess {
-                        serial,
-                        hash: todo!("calculate hash"),
-                        node_id: own_id,
-                        path,
-                    }),
+                raft.client_write(FileCommitSuccess {
+                    serial,
+                    hash: todo!("calculate hash"),
+                    node_id: own_id,
+                    path: *path,
                 })
+                // raft.client_write(AppClientRequest {
+                //     client: own_id,
+                //     serial: todo!("Get serial number from some global counter"),
+                //     operation: Operation::FromNode(FileCommitSuccess {
+                //         serial,
+                //         hash: todo!("calculate hash"),
+                //         node_id: own_id,
+                //         path,
+                //     }),
+                // })
                 .await?;
 
                 // Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
