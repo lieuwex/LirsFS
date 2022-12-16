@@ -28,7 +28,7 @@ use tokio::{
 
 use crate::{
     client_req::AppClientRequest,
-    client_res::AppClientResponse,
+    client_res::{AppClientResponse, ClientError},
     db::{
         self, curr_snapshot, db,
         file::File,
@@ -41,7 +41,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-    CONFIG, FILE_SYSTEM, FILE_SYSTEM,
+    CONFIG, FILE_SYSTEM, RAFT,
 };
 
 #[derive(Error, Debug)]
@@ -191,7 +191,7 @@ impl AppRaftStorage {
         serial: u64,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
-    ) -> Result<AppClientResponse> {
+    ) -> Result<String, ClientError> {
         match op {
             ClientToNodeOperation::Write {
                 path,
@@ -220,7 +220,7 @@ impl AppRaftStorage {
         serial: u64,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
-    ) -> Result<AppClientResponse> {
+    ) -> Result<String, ClientError> {
         use NodeToNodeOperation::*;
         match op {
             NodeLost {
@@ -236,16 +236,16 @@ impl AppRaftStorage {
                 if self.get_own_id() == *node_id {
                     tokio::fs::remove_file(path).await?;
                 }
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
 
             // This node asks a keeper node for the file, then replicates the file on its own filesystem
             StoreReplica { path, node_id } => {
                 if self.get_own_id() != *node_id {
-                    return Ok(AppClientResponse(Ok(format!(
+                    return Ok(format!(
                         "I (node_id: {}) am not the target of this operation",
                         node_id
-                    ))));
+                    ));
                 }
                 // TODO: In case of `rsync` errors, try other keepers until we find one that works
                 // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
@@ -259,7 +259,7 @@ impl AppRaftStorage {
                 .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
                 Rsync::copy_from(keeper, path).await?;
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
             FileCommitFail {
                 serial,
@@ -274,7 +274,7 @@ impl AppRaftStorage {
             } => {
                 Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
                 File::update_file_hash(conn, path, *hash).await?;
-                Ok(AppClientResponse(Ok("".into())))
+                Ok(String::new())
             }
             NodeJoin { node_id } => todo!(),
             NodeLeft { node_id } => todo!(),
@@ -375,7 +375,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 self.handle_client_operation(data.serial, op, &mut tx).await
             }
             Operation::FromNode(op) => self.handle_node_operation(data.serial, op, &mut tx).await,
-        }?;
+        };
+        let response = AppClientResponse(response);
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
         LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
         tx.commit().await?;
@@ -409,7 +410,8 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 Operation::FromNode(op) => {
                     self.handle_node_operation(data.serial, op, &mut tx).await
                 }
-            }?;
+            };
+            let response = AppClientResponse(response);
             // Save the response to applying this entry, but don't return it
             LastAppliedEntries::set(&mut tx, data.client, *id, &response).await?;
         }
