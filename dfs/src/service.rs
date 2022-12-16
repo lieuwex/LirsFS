@@ -22,6 +22,5 @@ pub trait Service {
 
     /* Filesystem operations */
     async fn read_dir(path: Utf8PathBuf) -> Vec<DirEntry>;
-    async fn write_bytes(path: Utf8PathBuf, pos: SeekFrom, buf: Vec<u8>) -> ();
     async fn read_bytes(path: Utf8PathBuf, pos: SeekFrom, count: usize) -> Vec<u8>;
 }

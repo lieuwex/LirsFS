@@ -47,10 +47,6 @@ impl Service for Server {
     async fn read_dir(self, _: Context, path: Utf8PathBuf) -> Vec<DirEntry> {
         FILE_SYSTEM.read_dir(path).await.unwrap()
     }
-    async fn write_bytes(self, _: Context, path: Utf8PathBuf, pos: SeekFrom, buf: Vec<u8>) -> () {
-        let pos: std::io::SeekFrom = pos.into();
-        FILE_SYSTEM.write_bytes(path, pos, &buf).await.unwrap()
-    }
     async fn read_bytes(
         self,
         _: Context,
