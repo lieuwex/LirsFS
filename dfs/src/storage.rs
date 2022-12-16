@@ -1,4 +1,5 @@
 use crate::{
+    assume_client,
     client_req::AppClientRequest,
     client_res::AppClientResponse,
     db::{
@@ -14,7 +15,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-    CONFIG, RAFT,
+    CONFIG, NETWORK, RAFT,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -76,6 +77,7 @@ impl AppRaftStorage {
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
     async fn handle_node_operation(
         &self,
+        serial: RaftLogId,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
     ) -> Result<AppClientResponse> {
@@ -152,9 +154,23 @@ impl AppRaftStorage {
                 // TODO perhaps return a more structured error so the webdav client can notify a user a file has been lost
                 // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
-                .ok_or_else(|| anyhow!("No keeper found for file {:#?}. This probably means the file has been lost.", path))?;
+                .ok_or_else(|| anyhow!("No active keeper found for file {:#?}. This probably means the file has been lost.", path))?;
                 Rsync::copy_from(keeper, path).await?;
-                Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
+                let raft = &RAFT.get().unwrap();
+                let own_id = self.get_own_id();
+                raft.client_write(AppClientRequest {
+                    client: own_id,
+                    serial: todo!("Get serial number from some global counter"),
+                    operation: Operation::FromNode(FileCommitSuccess {
+                        serial,
+                        hash: todo!("calculate hash"),
+                        node_id: own_id,
+                        path,
+                    }),
+                })
+                .await?;
+
+                // Keepers::add_keeper_for_file(conn, path.as_str(), *node_id).await?;
                 Ok(AppClientResponse(Ok("".into())))
             }
             FileCommitFail {
