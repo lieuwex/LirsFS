@@ -55,7 +55,7 @@ impl Service for Server {
         count: usize,
     ) -> Vec<u8> {
         let storage = STORAGE.get().unwrap();
-        let lock = storage.get_queue().get_read(path.clone()).await;
+        let lock = storage.get_queue().read(path.clone()).await;
 
         let pos: std::io::SeekFrom = pos.into();
 

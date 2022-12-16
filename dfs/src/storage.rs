@@ -148,7 +148,7 @@ impl AppRaftStorage {
 
                 do_commit(serial, path.clone(), am_keeper, move || async move {
                     let mut tx = conn.begin().await?;
-                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
+                    let lock = self.get_queue().write(path.clone(), serial).await?;
 
                     let path = File::create_file(&mut tx, path.clone(), *replication_factor)
                         .await?
@@ -184,7 +184,7 @@ impl AppRaftStorage {
             } => {
                 let am_keeper = Keepers::is_self_keeper(conn, path).await?;
                 do_commit(serial, path.clone(), am_keeper, move || async move {
-                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
+                    let lock = self.get_queue().write(path.clone(), serial).await?;
 
                     let res = if am_keeper {
                         FILE_SYSTEM

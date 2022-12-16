@@ -85,7 +85,7 @@ impl Queue {
     /// Submit and hold a write lock for the file at `path` for write command `serial`.
     /// This function will wait until a write lock is acquired.
     /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
-    pub async fn get_write(
+    pub async fn write(
         self: Arc<Self>,
         path: Utf8PathBuf,
         serial: u64,
@@ -140,7 +140,7 @@ impl Queue {
         Ok(QueueWriteHandle::new(htx))
     }
 
-    pub async fn get_read(&self, path: Utf8PathBuf) -> QueueReadHandle<'static> {
+    pub async fn read(&self, path: Utf8PathBuf) -> QueueReadHandle<'static> {
         let lock = {
             let entry = self.entry(path).await;
             entry.lock.clone()
