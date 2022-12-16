@@ -15,11 +15,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     rsync::Rsync,
-<<<<<<< HEAD
-    util, CONFIG, NETWORK, RAFT,
-=======
-    CONFIG, NETWORK, RAFT,
->>>>>>> 4a662ee4e2533bb0237c0cd3cfedc977096c2e49
+    util, CONFIG, RAFT,
 };
 use anyhow::{anyhow, Result};
 use async_raft::{
@@ -82,7 +78,6 @@ impl AppRaftStorage {
     /// Handle a [NodeToNodeOperation], possibly mutating the file registry.
     async fn handle_node_operation(
         &self,
-        serial: RaftLogId,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
         serial: RaftLogId,
