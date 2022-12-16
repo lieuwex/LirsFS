@@ -1,11 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use camino::{Utf8Path, Utf8PathBuf};
 use sqlx::Either;
 use tokio::sync::{
-    oneshot, MappedMutexGuard, Mutex, MutexGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard,
-    RwLock,
+    broadcast, oneshot, MappedMutexGuard, Mutex, MutexGuard, OwnedRwLockReadGuard,
+    OwnedRwLockWriteGuard, RwLock,
 };
 
 pub struct QueueReadHandle<'a>(Either<OwnedRwLockReadGuard<()>, &'a QueueWriteHandle>);
@@ -35,7 +38,7 @@ impl Drop for QueueWriteHandle {
 #[derive(Debug, Default)]
 struct QueueItem {
     lock: Arc<RwLock<()>>,
-    waiters: HashMap<u64, oneshot::Sender<()>>,
+    waiters: HashMap<u64, broadcast::Sender<()>>,
 }
 
 #[derive(Debug)]
@@ -88,24 +91,33 @@ impl Queue {
 
         let this = self.clone();
         tokio::spawn(async move {
-            // channel to indicate that the write operation has been completed
-            let (otx, orx) = oneshot::channel();
-
             // we hold an entry lock for this whole task.
-            let write_lock: OwnedRwLockWriteGuard<()> = {
+            let (write_lock, mut orx): (OwnedRwLockWriteGuard<()>, _) = {
                 // hold a lock on the items, this is as shortlived as posisble so that other tasks
                 // can mark this write as finished! ...
                 let mut entry = this.entry(path).await;
-                assert!(entry.waiters.insert(serial, otx).is_none());
+
+                // channel to indicate that the write operation has been completed
+                let orx = match entry.waiters.entry(serial) {
+                    Entry::Vacant(v) => {
+                        let (otx, orx) = broadcast::channel(1);
+                        v.insert(otx);
+                        orx
+                    }
+                    Entry::Occupied(o) => o.get().subscribe(),
+                };
+
                 // ... which is the reason we are creating an _owned_ guard here here.
-                entry.lock.clone().write_owned().await
+                let lock = entry.lock.clone().write_owned().await;
+
+                (lock, orx)
             };
 
             // Notify that the write lock has been acquired.
             ltx.send(()).unwrap();
 
             // We wait for _both_ the channels to be done.
-            orx.await.unwrap();
+            orx.recv().await.unwrap();
             hrx.await.unwrap();
 
             // And finally drop it.
