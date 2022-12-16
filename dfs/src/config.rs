@@ -1,5 +1,6 @@
-use std::net::SocketAddr;
+use std::{collections::HashSet, net::SocketAddr};
 
+use anyhow::bail;
 use async_raft::NodeId;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,22 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn check_integrity(&self) -> Result<(), anyhow::Error> {
+        {
+            let mut seen = HashSet::new();
+            for node in &self.nodes {
+                if !seen.insert(node.id) {
+                    bail!(
+                        "There already exists a node with id {} in the config.",
+                        node.id
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Return the filename of a work-in-progress snapshot.
     /// After the snapshot is finalized, the Raft cluster's master must
     /// change this file's name to [Config]'s `file_registry_snapshot`

@@ -42,7 +42,10 @@ pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
 pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config_path = env::args().nth(1).expect("Provide a config file");
     let config = fs::read_to_string(config_path).unwrap();
-    toml::from_str(&config).expect("Couldn't parse config file")
+
+    let config: config::Config = toml::from_str(&config).expect("Couldn't parse config file");
+    config.check_integrity().unwrap();
+    config
 });
 pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
 pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
