@@ -33,14 +33,7 @@ impl FilePointer {
 
     pub(super) async fn _seek(&mut self, pos: SeekFrom) -> Result<u64, FsError> {
         let add = |a: u64, b: i64| -> Result<u64, FsError> {
-            let res = i128::from(a) + i128::from(b);
-            if res < 0 {
-                Err(FsError::GeneralFailure)
-            } else if res > i128::from(u64::MAX) {
-                Err(FsError::GeneralFailure)
-            } else {
-                Ok(res as u64)
-            }
+            a.checked_add_signed(b).ok_or(FsError::GeneralFailure)
         };
 
         self.pos = match pos {
