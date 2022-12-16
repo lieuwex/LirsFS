@@ -1,11 +1,15 @@
-use async_raft::AppDataResponse;
+use async_raft::{raft::ClientWriteResponse, AppDataResponse};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientError(String);
 
-impl From<anyhow::Error> for ClientError {
-    fn from(e: anyhow::Error) -> Self {
+impl<E> From<E> for ClientError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(e: E) -> Self {
+        let e: anyhow::Error = e.into();
         Self(format!("{:?}", e))
     }
 }
@@ -25,9 +29,15 @@ impl<'a> From<&'a str> for AppClientResponse {
     }
 }
 
+impl From<ClientWriteResponse<AppClientResponse>> for AppClientResponse {
+    fn from(value: ClientWriteResponse<AppClientResponse>) -> Self {
+        value.data
+    }
+}
+
 impl From<anyhow::Error> for AppClientResponse {
     fn from(e: anyhow::Error) -> Self {
-        Self(Err(e))
+        Self(Err(e.into()))
     }
 }
 
