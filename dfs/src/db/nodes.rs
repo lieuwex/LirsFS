@@ -8,23 +8,36 @@ use sqlx::{query, SqliteConnection};
 
 use super::schema::{Schema, SqlxQuery};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeStatus {
+    Active = 0,
+    Inactive = 1,
+    Lost = 2,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodesRow {
     pub id: NodeId,
-    pub active: bool,
+    pub status: NodeStatus,
 }
 
 pub struct Nodes;
 
 impl Nodes {
-    pub async fn deactivate_node_by_id(conn: &mut SqliteConnection, id: NodeId) -> Result<()> {
+    pub async fn set_node_status_by_id(
+        conn: &mut SqliteConnection,
+        id: NodeId,
+        new_status: NodeStatus,
+    ) -> Result<()> {
         let id = id as i64;
+        let new_status = new_status as i8;
         query!(
             "
             UPDATE nodes
-            SET active = 0
+            SET status = ?
             WHERE id = ?
         ",
+            new_status,
             id
         )
         .execute(conn)
