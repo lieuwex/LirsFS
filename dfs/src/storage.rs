@@ -169,6 +169,10 @@ impl AppRaftStorage {
                 })
                 .await
             }
+            ClientToNodeOperation::CreateDir { path } => {
+                File::create_dir(conn, path.clone()).await?;
+                Ok("created dir".into())
+            }
 
             ClientToNodeOperation::Write {
                 path,

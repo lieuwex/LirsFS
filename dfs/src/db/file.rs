@@ -127,6 +127,22 @@ impl File {
         })
     }
 
+    pub async fn create_dir(conn: &mut SqliteConnection, path: Utf8PathBuf) -> Result<FileRow> {
+        query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, FALSE, 0, 0)")
+            .bind(path.as_str())
+            .execute(conn)
+            .await?;
+
+        Ok(FileRow {
+            file_path: path,
+            file_size: 0,
+            modified_at: SystemTime::now(),
+            content_hash: None,
+            replication_factor: 0,
+            is_file: false,
+        })
+    }
+
     pub async fn update_file_hash(
         conn: &mut SqliteConnection,
         path: &Utf8Path,
