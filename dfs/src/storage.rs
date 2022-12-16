@@ -16,7 +16,7 @@ use async_raft::{
 };
 use camino::Utf8PathBuf;
 use futures::prelude::*;
-use sqlx::{query, Connection, SqliteConnection};
+use sqlx::{query, Connection, Either, SqliteConnection};
 use thiserror::Error;
 use tokio::{
     fs::OpenOptions,
@@ -61,7 +61,14 @@ struct QueueItem {
     waiters: HashMap<u64, oneshot::Sender<()>>,
 }
 
-pub struct QueueReadHandle(OwnedRwLockReadGuard<()>);
+pub struct QueueReadHandle<'a>(Either<OwnedRwLockReadGuard<()>, &'a QueueWriteHandle>);
+
+impl<'a> From<&'a QueueWriteHandle> for QueueReadHandle<'a> {
+    fn from(h: &'a QueueWriteHandle) -> Self {
+        Self(Either::Right(h))
+    }
+}
+
 pub struct QueueWriteHandle(Option<oneshot::Sender<()>>);
 
 impl QueueWriteHandle {
@@ -147,12 +154,12 @@ impl Queue {
         Ok(QueueWriteHandle::new(htx))
     }
 
-    pub async fn get_read(&self, path: Utf8PathBuf) -> QueueReadHandle {
+    pub async fn get_read(&self, path: Utf8PathBuf) -> QueueReadHandle<'static> {
         let lock = {
             let entry = self.entry(path).await;
             entry.lock.clone()
         };
-        QueueReadHandle(lock.read_owned().await)
+        QueueReadHandle(Either::Left(lock.read_owned().await))
     }
 }
 
@@ -170,7 +177,7 @@ fn do_commit<'a, Fun, FunRet, ERR>(
 ) -> impl Future<Output = Result<String, ClientError>>
 where
     Fun: (FnOnce() -> FunRet) + Send + 'a,
-    FunRet: Future<Output = Result<String, ERR>> + Send,
+    FunRet: Future<Output = Result<(String, Option<u64>), ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
     async move {
@@ -183,10 +190,10 @@ where
         let raft = RAFT.get().unwrap();
 
         let send_res = match (am_keeper, &res) {
-            (true, Ok(_)) => {
+            (true, &Ok((_, hash))) => {
                 raft.client_write(NodeToNodeOperation::FileCommitSuccess {
                     serial,
-                    hash: None,
+                    hash,
                     node_id: CONFIG.get_own_id(),
                     path,
                 })
@@ -205,7 +212,7 @@ where
         };
 
         match (res, send_res) {
-            (Ok(r), Ok(_)) => Ok(r),
+            (Ok((r, _)), Ok(_)) => Ok(r),
             (Ok(_), Err(e)) => Err(e),
             (Err(e), _) => Err(e),
         }
@@ -268,14 +275,11 @@ impl AppRaftStorage {
 
                     tx.commit().await?;
 
-                    anyhow::Ok(
-                        if am_keeper {
-                            "created file"
-                        } else {
-                            "am not a keeper"
-                        }
-                        .into(),
-                    )
+                    anyhow::Ok(if am_keeper {
+                        ("created file".into(), None)
+                    } else {
+                        ("am not a keeper".into(), None)
+                    })
                 })
                 .await
             }
@@ -285,16 +289,24 @@ impl AppRaftStorage {
                 offset,
                 contents,
             } => {
-                let lock = self.get_queue().get_write(path.clone(), serial).await?;
+                let am_keeper = Keepers::is_self_keeper(conn, path).await?;
+                do_commit(serial, path.clone(), am_keeper, move || async move {
+                    let lock = self.get_queue().get_write(path.clone(), serial).await?;
 
-                if Keepers::is_self_keeper(conn, path).await? {
-                    FILE_SYSTEM
-                        .write_bytes(&lock, path.clone(), SeekFrom::Start(*offset), &contents)
-                        .await?;
-                    Ok(format!("written {} bytes", contents.len()).into())
-                } else {
-                    Ok("am not a keeper".into())
-                }
+                    let res = if am_keeper {
+                        FILE_SYSTEM
+                            .write_bytes(&lock, path.clone(), SeekFrom::Start(*offset), &contents)
+                            .await?;
+
+                        let hash = FILE_SYSTEM.get_hash(&(&lock).into(), path).await?;
+
+                        (format!("written {} bytes", contents.len()), Some(hash))
+                    } else {
+                        ("am not a keeper".into(), None)
+                    };
+                    anyhow::Ok(res)
+                })
+                .await
             }
 
             _ => todo!(),

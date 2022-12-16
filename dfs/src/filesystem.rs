@@ -1,11 +1,15 @@
-use std::io::SeekFrom;
+use std::{
+    hash::Hasher,
+    io::{ErrorKind, SeekFrom},
+};
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader},
 };
+use twox_hash::XxHash64;
 use uuid::Uuid;
 
 use crate::{
@@ -38,8 +42,7 @@ impl FileSystem {
         Self {}
     }
 
-    fn map_path<P: Into<Utf8PathBuf>>(&self, path: P) -> Utf8PathBuf {
-        let path: Utf8PathBuf = path.into();
+    fn map_path(&self, path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
         CONFIG.file_dir.join(path)
     }
 
@@ -84,7 +87,7 @@ impl FileSystem {
     }
     pub async fn read_bytes(
         &self,
-        _: &QueueReadHandle,
+        _: &QueueReadHandle<'_>,
         path: Utf8PathBuf,
         pos: SeekFrom,
         count: usize,
@@ -96,5 +99,26 @@ impl FileSystem {
         file.read_exact(&mut vec).await?; // REVIEW: do we want to use read_exact?
 
         Ok(vec)
+    }
+
+    pub async fn get_hash(
+        &self,
+        _: &QueueReadHandle<'_>,
+        path: impl AsRef<Utf8Path>,
+    ) -> Result<u64> {
+        let file = File::open(self.map_path(path)).await?;
+        let mut reader = BufReader::new(file);
+
+        let mut hasher = XxHash64::default();
+        loop {
+            let b = match reader.read_u8().await {
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(e.into()),
+                Ok(b) => b,
+            };
+            hasher.write_u8(b)
+        }
+
+        Ok(hasher.finish())
     }
 }
