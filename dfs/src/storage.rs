@@ -200,6 +200,27 @@ impl AppRaftStorage {
                 .await
             }
 
+            o @ (ClientToNodeOperation::RemoveFile { path }
+            | ClientToNodeOperation::RemoveDir { path }) => {
+                let am_keeper = Keepers::is_self_keeper(conn, path).await?;
+                do_commit(serial, path.clone(), am_keeper, move || async move {
+                    let lock = self.get_queue().write(path.clone(), serial).await?;
+
+                    File::remove_file(conn, path).await?;
+
+                    let res = if am_keeper {
+                        let is_dir = matches!(o, ClientToNodeOperation::RemoveDir { .. });
+                        FILE_SYSTEM.remove_file(&lock, path, is_dir).await?;
+
+                        ("removed file".into(), None)
+                    } else {
+                        ("am not a keeper".into(), None)
+                    };
+                    anyhow::Ok(res)
+                })
+                .await
+            }
+
             _ => todo!(),
         }
     }

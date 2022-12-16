@@ -6,7 +6,7 @@ use std::{
 use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 use tokio::{
-    fs::{File, OpenOptions},
+    fs::{remove_dir, remove_file, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader},
 };
 use twox_hash::XxHash64;
@@ -58,6 +58,21 @@ impl FileSystem {
             .open(path)
             .await?;
         Ok(file)
+    }
+
+    pub async fn remove_file(
+        &self,
+        _: &QueueWriteHandle,
+        path: impl AsRef<Utf8Path>,
+        is_dir: bool,
+    ) -> Result<()> {
+        let path = self.map_path(path);
+        if is_dir {
+            remove_dir(path).await?;
+        } else {
+            remove_file(path).await?;
+        }
+        Ok(())
     }
 
     pub async fn read_dir(&self, path: impl AsRef<Utf8Path>) -> Result<Vec<DirEntry>> {

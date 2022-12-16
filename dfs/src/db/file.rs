@@ -163,6 +163,20 @@ impl File {
         .await?;
         Ok(())
     }
+
+    pub async fn remove_file(conn: &mut SqliteConnection, path: &Utf8Path) -> Result<bool> {
+        let path = path.as_str();
+        let res = query!(
+            "
+            DELETE FROM files
+            WHERE path = ?
+        ",
+            path
+        )
+        .execute(conn)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
 }
 
 impl Schema for File {
