@@ -83,7 +83,7 @@ impl Queue {
                 // can mark this write as finished! ...
                 let mut entry = this.entry(path).await;
                 assert!(entry.waiters.insert(serial, otx).is_none());
-                // ... which is the reason we are holding a _owned_ guard here here.
+                // ... which is the reason we are creating an _owned_ guard here here.
                 entry.lock.clone().write_owned().await
             };
 
