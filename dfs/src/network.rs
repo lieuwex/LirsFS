@@ -53,7 +53,7 @@ macro_rules! assume_client {
     }};
 
     ($network:expr, $node_id:expr) => {{
-        use crate::network::CLIENT_ACQUIRE_TIMEOUT;
+        use $crate::network::CLIENT_ACQUIRE_TIMEOUT;
         assume_client!($network, $node_id, Some(CLIENT_ACQUIRE_TIMEOUT))
     }};
 

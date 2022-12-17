@@ -1,36 +1,64 @@
-use std::future::Future;
+use std::ops::Deref;
 
 use anyhow::Result;
-use async_raft::NodeId;
+use futures::prelude::*;
 use tarpc::context::Context;
-use uuid::Uuid;
-use webdav_handler::fs::{DavFile, DavMetaData, FsError, FsFuture};
+use webdav_handler::{
+    davpath::DavPath,
+    fs::{DavFile, DavFileSystem, DavMetaData, FsError, FsFuture},
+};
 
-use super::Client;
-use crate::{assume_client, NETWORK};
+use super::{Client, SeekFrom, WebdavFilesystem};
+use crate::{operation::ClientToNodeOperation, util::davpath_to_pathbuf, RAFT, STORAGE, WEBDAV_FS};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct FilePointer {
-    node_id: NodeId,
-    file_id: Uuid,
+    file_path: DavPath,
+    fs: &'static WebdavFilesystem,
+    pos: u64,
 }
 
 impl FilePointer {
-    pub(super) fn new(node_id: NodeId, file_id: Uuid) -> Self {
-        Self { node_id, file_id }
+    pub(super) fn new(file_path: DavPath) -> Self {
+        Self {
+            file_path,
+            fs: WEBDAV_FS.get().unwrap().deref(),
+            pos: 0,
+        }
+    }
+
+    pub(super) fn get_seek(&self) -> SeekFrom {
+        SeekFrom::Start(self.pos)
+    }
+
+    pub(super) async fn _seek(&mut self, pos: SeekFrom) -> Result<u64, FsError> {
+        let add = |a: u64, b: i64| -> Result<u64, FsError> {
+            a.checked_add_signed(b).ok_or(FsError::GeneralFailure)
+        };
+
+        self.pos = match pos {
+            SeekFrom::Start(pos) => pos,
+            SeekFrom::End(delta) => {
+                let metadata = self.metadata().await?;
+                let len = metadata.len();
+                add(len, delta)?
+            }
+            SeekFrom::Current(delta) => add(self.pos, delta)?,
+        };
+
+        Ok(self.pos)
     }
 }
 
-fn do_file<'a, Fun, FunRet, OK, ERR>(fp: FilePointer, f: Fun) -> FsFuture<'a, OK>
+fn do_op<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
 where
-    Fun: (FnOnce(Client, FilePointer) -> FunRet) + Send + 'a,
+    Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
     ERR: Into<anyhow::Error>,
 {
     Box::pin(async move {
         let res = async {
-            let client = assume_client!(fp.node_id);
-            let res = f(client, fp).await.map_err(|e| e.into())?;
+            let res = f().await.map_err(|e| e.into())?;
             anyhow::Ok(res)
         }
         .await
@@ -42,53 +70,73 @@ where
     })
 }
 
+fn do_file<'a, Fun, FunRet, OK, ERR>(fp: &'a FilePointer, f: Fun) -> FsFuture<'a, OK>
+where
+    Fun: (FnOnce(Client, &'a FilePointer) -> FunRet) + Send + 'a,
+    FunRet: Future<Output = Result<OK, ERR>> + Send,
+    ERR: Into<anyhow::Error>,
+{
+    do_op(move || async move {
+        let (_, client) = fp.fs.assume_keeper(&fp.file_path).await?;
+        f(client, fp).await.map_err(|e| e.into())
+    })
+}
+
 impl DavFile for FilePointer {
     fn metadata<'a>(&'a mut self) -> FsFuture<Box<dyn DavMetaData>> {
-        do_file(*self, move |client, fp| async move {
-            let res = client.file_metadata(Context::current(), fp.file_id).await?;
-
-            let res: Box<dyn DavMetaData> = Box::new(res);
-            anyhow::Ok(res)
-        })
+        self.fs.metadata(&self.file_path)
     }
 
     fn write_buf<'a>(&'a mut self, buf: Box<dyn bytes::Buf + Send>) -> FsFuture<()> {
         let bytes = buf.chunk().to_vec();
-        do_file(*self, move |client, fp| async move {
-            client
-                .write_bytes(Context::current(), fp.file_id, bytes)
-                .await
+        do_op(move || async move {
+            let path = davpath_to_pathbuf(&self.file_path);
+            RAFT.get()
+                .unwrap()
+                .client_write(ClientToNodeOperation::Write {
+                    path,
+                    offset: self.pos,
+                    contents: bytes,
+                })
+                .await?;
+            anyhow::Ok(())
         })
     }
 
     fn write_bytes<'a>(&'a mut self, buf: bytes::Bytes) -> FsFuture<()> {
-        do_file(*self, move |client, fp| async move {
-            client
-                .write_bytes(Context::current(), fp.file_id, buf.to_vec())
-                .await
+        do_op(move || async move {
+            let path = davpath_to_pathbuf(&self.file_path);
+
+            RAFT.get()
+                .unwrap()
+                .client_write(ClientToNodeOperation::Write {
+                    path,
+                    offset: self.pos,
+                    contents: buf.to_vec(),
+                })
+                .await?;
+
+            anyhow::Ok(())
         })
     }
 
     fn read_bytes<'a>(&'a mut self, count: usize) -> FsFuture<bytes::Bytes> {
-        do_file(*self, move |client, fp| async move {
+        do_file(self, move |client, fp| async move {
+            let path = davpath_to_pathbuf(&fp.file_path);
             let bytes = client
-                .read_bytes(Context::current(), fp.file_id, count)
+                .read_bytes(Context::current(), path, fp.get_seek(), count)
                 .await?;
             anyhow::Ok(bytes.into())
         })
     }
 
     fn seek<'a>(&'a mut self, pos: std::io::SeekFrom) -> FsFuture<u64> {
-        do_file(*self, move |client, fp| async move {
-            client
-                .seek(Context::current(), fp.file_id, pos.into())
-                .await
-        })
+        let pos: SeekFrom = pos.into();
+        Box::pin(self._seek(pos))
     }
 
     fn flush<'a>(&'a mut self) -> FsFuture<()> {
-        do_file(*self, move |client, fp| async move {
-            client.flush(Context::current(), fp.file_id).await
-        })
+        // TODO: NOOP
+        Box::pin(future::ready(Ok(())))
     }
 }

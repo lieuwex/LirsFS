@@ -1,9 +1,12 @@
-use std::net::SocketAddr;
+use std::{collections::HashSet, net::SocketAddr};
 
+use anyhow::bail;
 use async_raft::NodeId;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
+
+use crate::RAFT;
 
 fn default_file_dir() -> Utf8PathBuf {
     if cfg!(debug_assertions) {
@@ -80,6 +83,22 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn check_integrity(&self) -> Result<(), anyhow::Error> {
+        {
+            let mut seen = HashSet::new();
+            for node in &self.nodes {
+                if !seen.insert(node.id) {
+                    bail!(
+                        "There already exists a node with id {} in the config.",
+                        node.id
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Return the filename of a work-in-progress snapshot.
     /// After the snapshot is finalized, the Raft cluster's master must
     /// change this file's name to [Config]'s `file_registry_snapshot`
@@ -93,6 +112,21 @@ impl Config {
     /// which will complete the installation.
     pub fn blank_file_registry_snapshot(&self) -> Utf8PathBuf {
         self.file_registry_snapshot.with_extension("db.blank")
+    }
+
+    pub fn get_own_id(&self) -> NodeId {
+        // This is just a debug assert to make sure my understanding is correct.
+        // We use CONFIG.node_id and raft_own_id interchangeably in the code, so it has to be
+        // correct, otherwise code is broken.
+        // This is a nice place to test the assertion.
+        if cfg!(debug_assertions) {
+            if let Some(raft) = RAFT.get() {
+                let raft_own_id = raft.metrics().borrow().id;
+                assert_eq!(self.node_id, raft_own_id);
+            }
+        }
+
+        self.node_id
     }
 
     pub fn get_node_ssh_host(&self, node_id: NodeId) -> Option<SocketAddr> {

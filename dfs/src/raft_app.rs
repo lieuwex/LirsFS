@@ -11,6 +11,7 @@ use crate::{
 };
 
 /// Wrapper over [Raft]. Necessary because [Raft] does not implement [Debug].
+#[derive(Clone)]
 pub struct RaftApp {
     pub app: Raft<AppClientRequest, AppClientResponse, AppRaftNetwork, AppRaftStorage>,
 }

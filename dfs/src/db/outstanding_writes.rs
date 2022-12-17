@@ -1,14 +1,14 @@
 use anyhow::Result;
-use futures::prelude::*;
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
+use sqlx::{query, Error, SqliteConnection};
 
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutstandingWriteRow {
     pub serial: u64,
-    pub file_id: i64,
+    pub file_path: Utf8PathBuf,
     pub node_id: i64,
 }
 
@@ -16,20 +16,18 @@ pub struct OutstandingWrites;
 
 impl OutstandingWrites {
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<OutstandingWriteRow>> {
-        let res = query("SELECT serial, file_id, node_id FROM outstanding_writes")
-            .fetch(conn)
-            .map(|r| anyhow::Ok(r?))
-            .and_then(|row: SqliteRow| async move {
+        let res = query!("SELECT serial, file_path, node_id FROM outstanding_writes")
+            .try_map(|r| {
                 Ok(OutstandingWriteRow {
                     serial: {
-                        let val: i64 = row.get("serial");
-                        u64::try_from(val)?
+                        let val: i64 = r.serial;
+                        u64::try_from(val).map_err(|e| Error::Decode(Box::new(e)))?
                     },
-                    file_id: row.get("file_id"),
-                    node_id: row.get("node_id"),
+                    file_path: Utf8PathBuf::from(r.file_path),
+                    node_id: r.node_id,
                 })
             })
-            .try_collect()
+            .fetch_all(conn)
             .await?;
         Ok(res)
     }

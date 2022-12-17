@@ -1,9 +1,9 @@
 CREATE TABLE IF NOT EXISTS outstanding_writes (
     -- REVIEW: I think serial numbers are globally unique.
     serial      integer primary key not null,
-    file_id     integer not null,
+    file_path   text not null,
     node_id     integer not null,
 
-    FOREIGN KEY(node_id) REFERENCES nodes(id)
-    FOREIGN KEY(file_id) REFERENCES files(id)
+    FOREIGN KEY(node_id) REFERENCES nodes(id),
+    FOREIGN KEY(file_path) REFERENCES files(path) ON DELETE CASCADE
 );

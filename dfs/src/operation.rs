@@ -1,5 +1,3 @@
-use crate::db::keepers::Keepers;
-
 use std::time::SystemTime;
 
 use async_raft::NodeId;
@@ -65,8 +63,8 @@ pub enum NodeToNodeOperation {
     FileCommitSuccess {
         /// The serial number of the operation to which this commit refers to.
         serial: u64,
-        /// XxHash64 value for the whole file content at this point.
-        hash: u64,
+        /// XxHash64 value for the whole file content at this point, if any.
+        hash: Option<u64>,
         /// The node this file was committed on
         node_id: NodeId,
         /// Path of the file that was committed
@@ -78,10 +76,13 @@ pub enum NodeToNodeOperation {
 /// I.e., an external operation.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToNodeOperation {
-    /// Create a file at `path` with the given `replication_factor`
+    /// Create a file at `path` with the given `replication_factor`.
+    /// The `initial_keepers` list is a list of node ids, choosen by the leader, these nodes will
+    /// create the empty file in their file storage.
     CreateFile {
         path: Utf8PathBuf,
-        replication_factor: usize,
+        replication_factor: u64,
+        initial_keepers: Vec<NodeId>,
     },
     /// Create a dictionary at `path`.
     CreateDir {
@@ -91,7 +92,7 @@ pub enum ClientToNodeOperation {
     /// Write `contents` to the existing file at `path`, starting from `offset`
     Write {
         path: Utf8PathBuf,
-        offset: usize,
+        offset: u64,
         contents: Vec<u8>,
     },
 

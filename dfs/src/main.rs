@@ -9,15 +9,14 @@ use std::{
 
 use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
-use client_req::AppClientRequest;
-use client_res::AppClientResponse;
 use db::Database;
 use filesystem::FileSystem;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::task::JoinHandle;
+use webdav::WebdavFilesystem;
 
 mod client_req;
 mod client_res;
@@ -29,6 +28,7 @@ mod rpc;
 mod filesystem;
 mod network;
 mod operation;
+mod queue;
 mod raft_app;
 mod rsync;
 mod server;
@@ -42,12 +42,17 @@ pub static RAFT: OnceCell<RaftApp> = OnceCell::new();
 pub static CONFIG: Lazy<config::Config> = Lazy::new(|| {
     let config_path = env::args().nth(1).expect("Provide a config file");
     let config = fs::read_to_string(config_path).unwrap();
-    toml::from_str(&config).expect("Couldn't parse config file")
+
+    let config: config::Config = toml::from_str(&config).expect("Couldn't parse config file");
+    config.check_integrity().unwrap();
+    config
 });
-pub static FILE_SYSTEM: Lazy<Mutex<FileSystem>> = Lazy::new(|| Mutex::new(FileSystem::new()));
+pub static FILE_SYSTEM: Lazy<FileSystem> = Lazy::new(|| FileSystem::new());
+pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
+pub static STORAGE: OnceCell<Arc<AppRaftStorage>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
-async fn run_app(raft: &RaftApp) -> ! {
+async fn run_app(raft: RaftApp) -> ! {
     let mut server_task: Option<JoinHandle<()>> = None;
 
     let mut metrics = raft.app.metrics().clone();
@@ -76,6 +81,9 @@ async fn run_app(raft: &RaftApp) -> ! {
 
 #[tokio::main]
 async fn main() {
+    let _ = dotenv::dotenv();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
@@ -98,6 +106,8 @@ async fn main() {
         rpc::server(listen_addr).await;
     });
 
+    // TODO: WEBDAV_FS, STORAGE
+
     let network = Arc::new(AppRaftNetwork::new(raft_config.clone()));
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
 
@@ -110,9 +120,9 @@ async fn main() {
     let raft = RaftApp::new(Raft::new(node_id, raft_config, network.clone(), storage));
 
     NETWORK.set(network).unwrap();
-    RAFT.set(raft).unwrap();
+    RAFT.set(raft.clone()).unwrap();
 
-    run_app(RAFT.get().unwrap()).await; // This is subjective. Do it your own way.
-                                        // Just run your app, feeding Raft & client
-                                        // RPCs into the Raft node as they arrive.
+    run_app(raft).await; // This is subjective. Do it your own way.
+                         // Just run your app, feeding Raft & client
+                         // RPCs into the Raft node as they arrive.
 }
