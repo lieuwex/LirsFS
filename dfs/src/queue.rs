@@ -90,7 +90,7 @@ impl Queue {
     pub async fn write(
         self: Arc<Self>,
         path: Utf8PathBuf,
-        serial: u64,
+        serial: Option<u64>,
     ) -> Result<QueueWriteHandle> {
         // channel to indicate that the caller of `get_write` is finished with the lock.
         let (htx, hrx) = oneshot::channel();
@@ -101,20 +101,20 @@ impl Queue {
         let this = self.clone();
         tokio::spawn(async move {
             // we hold an entry lock for this whole task.
-            let (write_lock, mut orx): (OwnedRwLockWriteGuard<()>, _) = {
+            let (write_lock, orx): (OwnedRwLockWriteGuard<()>, _) = {
                 // hold a lock on the items, this is as shortlived as posisble so that other tasks
                 // can mark this write as finished! ...
                 let mut entry = this.entry(path).await;
 
                 // channel to indicate that the write operation has been completed
-                let orx = match entry.waiters.entry(serial) {
+                let orx = serial.map(|serial| match entry.waiters.entry(serial) {
                     Entry::Vacant(v) => {
                         let (otx, orx) = broadcast::channel(1);
                         v.insert(otx);
                         orx
                     }
                     Entry::Occupied(o) => o.get().subscribe(),
-                };
+                });
 
                 // ... which is the reason we are creating an _owned_ guard here here.
                 let lock = entry.lock.clone().write_owned().await;
@@ -126,7 +126,9 @@ impl Queue {
             ltx.send(()).unwrap();
 
             // We wait for _both_ the channels to be done.
-            orx.recv().await.unwrap();
+            if let Some(mut orx) = orx {
+                orx.recv().await.unwrap();
+            }
             hrx.await.unwrap();
 
             // And finally drop it.
