@@ -527,7 +527,6 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
     #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)> {
-        trace!("create_snapshot");
         Ok((
             String::from(""), // Snapshot id is irrelevant as we only ever save one snapshot
             Box::new(
