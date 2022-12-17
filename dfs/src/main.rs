@@ -16,6 +16,8 @@ use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
 use tokio::task::JoinHandle;
+use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 use webdav::WebdavFilesystem;
 
 mod client_req;
@@ -82,7 +84,11 @@ async fn run_app(raft: RaftApp) -> ! {
 #[tokio::main]
 async fn main() {
     let _ = dotenv::dotenv();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
 
     // Build our Raft runtime config, then instantiate our
     // RaftNetwork & RaftStorage impls.
@@ -99,7 +105,7 @@ async fn main() {
     .expect("DB already set");
 
     // TODO: put behind some CLI flag?
-    create_all_tables(DB.get().unwrap()).await;
+    // create_all_tables(DB.get().unwrap()).await;
 
     tokio::spawn(async {
         let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();

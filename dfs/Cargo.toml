@@ -13,7 +13,8 @@ futures = "0.3.25"
 dotenv = "0.15.0"
 
 log = "0.4.17"
-env_logger = "0.10.0"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing = { version = "0.1.37", features = ["attributes"] }
 
 anyhow = "1"
 thiserror = "1.0"

@@ -17,6 +17,7 @@ use tokio::{
     time,
 };
 use tokio_serde::formats::Bincode;
+use tracing::trace;
 
 use crate::{service::ServiceClient, CONFIG};
 
@@ -41,12 +42,13 @@ async fn connect(addr: SocketAddr) -> Result<ServiceClient> {
     Ok(c)
 }
 
+#[tracing::instrument(level = "trace", skip(client, ready))]
 async fn pinger(
     node_id: NodeId,
     addr: SocketAddr,
     client: Arc<RwLock<Option<ServiceClient>>>,
     ready: watch::Sender<ConnectionState>,
-) -> ! {
+) -> () {
     let mut interval = time::interval(CONFIG.ping_interval);
     interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
@@ -75,9 +77,10 @@ async fn pinger(
                         Ok(c) => c,
                         Err(e) => {
                             let interval = CONFIG.reconnect_try_interval_ms;
-                            eprintln!(
+                            trace!(
                                 "error while connecting, retrying in {:?}: {:?}",
-                                interval, e
+                                interval,
+                                e
                             );
                             time::sleep(interval).await;
                             continue 'reconnect;
@@ -95,13 +98,16 @@ async fn pinger(
             match client.ping(context::current()).await {
                 Err(e) => {
                     missed_count += 1;
-                    eprintln!(
+                    trace!(
                         "error while pinging to {:?} (missed count {}/{}): {:?}",
-                        addr, missed_count, CONFIG.max_missed_pings, e
+                        addr,
+                        missed_count,
+                        CONFIG.max_missed_pings,
+                        e
                     );
 
                     if missed_count > CONFIG.max_missed_pings {
-                        eprintln!("reconnecting {} to {}", node_id, addr);
+                        trace!("reconnecting {} to {}", node_id, addr);
                         *lock = None;
                         set_state!(ConnectionState::Reconnecting { failure_reason: e });
                         continue 'reconnect;

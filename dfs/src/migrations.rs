@@ -1,6 +1,8 @@
 use crate::DB;
+
 use anyhow::Result;
 use sqlx::query;
+use tracing::info;
 
 macro_rules! version_check {
     ($version:expr) => {{
@@ -8,7 +10,7 @@ macro_rules! version_check {
         if get_version().await? >= VERSION {
             return Ok(());
         }
-        println!("running migration {}", VERSION);
+        info!("running migration {}", VERSION);
 
         || {
             let db = DB.get().unwrap();
