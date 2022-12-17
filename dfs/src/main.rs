@@ -71,9 +71,7 @@ async fn run_app(raft: RaftApp) -> ! {
             (false, Some(t)) => t.abort(),
             (true, None) => {
                 let handle = tokio::spawn(async {
-                    let addr = IpAddr::from_str("::0").unwrap();
-                    let addr: SocketAddr = (addr, 25565).into();
-                    webdav::listen(&addr).await.unwrap();
+                    webdav::listen(&CONFIG.webdav_addr).await.unwrap();
                 });
                 server_task = Some(handle);
             }

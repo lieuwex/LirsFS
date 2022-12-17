@@ -63,6 +63,7 @@ pub struct Node {
 pub struct Config {
     pub cluster_name: String,
     pub node_id: NodeId,
+    pub webdav_addr: SocketAddr,
     pub nodes: Vec<Node>,
 
     #[serde(default = "default_file_dir")]
