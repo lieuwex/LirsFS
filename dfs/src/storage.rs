@@ -297,6 +297,7 @@ impl AppRaftStorage {
                         node_id
                     ));
                 }
+                let raft = &RAFT.get().unwrap();
                 // TODO: In case of `rsync` errors, try other keepers until we find one that works
                 // TODO: If `rsync` tells us the file is not available, the keepers table lied to us. Update it and continue? Or shutdown the app because of inconsistency?
 
@@ -307,10 +308,34 @@ impl AppRaftStorage {
                 // additionally we should not return `Err`, but `Ok(AppClientResponse(ClientError))`. Because from Raft's perspective,
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No active keeper found for file {:#?}. This probably means the file has been lost.", path))?;
-                Rsync::copy_from(keeper, path).await?;
+
+                if let Err(err) = Rsync::copy_from(keeper, path).await {
+                    raft.client_write(FileCommitFail {
+                        serial,
+                        failure_reason: format!(
+                            "Could not `rsync` file {} from node {}",
+                            path, keeper
+                        ),
+                    })
+                    .await?;
+                    return Err(err.into());
+                };
+
                 let fs_lock = self.get_queue().read(path.clone()).await;
-                let hash = FILE_SYSTEM.get_hash(&fs_lock, path).await?; // util::get_file_hash(path).await?;
-                let raft = &RAFT.get().unwrap();
+                let hash = match FILE_SYSTEM.get_hash(&fs_lock, path).await {
+                    Ok(hash) => hash,
+                    Err(err) => {
+                        // We're going to pretend the entire operation did not succeed,
+                        // so try to remove the file from our fs.
+                        tokio::fs::remove_file(path).await.ok();
+                        raft.client_write(FileCommitFail {
+                            serial,
+                            failure_reason: format!("Could not calculate hash of file {}", path),
+                        })
+                        .await?;
+                        return Err(err.into());
+                    }
+                };
                 let own_id = self.get_own_id();
                 raft.client_write(FileCommitSuccess {
                     serial,
