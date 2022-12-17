@@ -56,7 +56,7 @@ pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
 pub static STORAGE: OnceCell<Arc<AppRaftStorage>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
-#[tracing::instrument(level = "trace")]
+#[tracing::instrument(level = "trace", skip(raft), fields(raft))]
 async fn run_app(raft: RaftApp) -> () {
     let mut server_task: Option<JoinHandle<()>> = None;
 
@@ -73,6 +73,8 @@ async fn run_app(raft: RaftApp) -> () {
         let m = metrics.borrow();
         let am_leader = m.current_leader == Some(m.id);
 
+        let span = tracing::Span::current();
+        span.record("raft", debug(&raft));
         debug!("{:?} {:?}", am_leader, server_task.take());
 
         // control webdav server job
