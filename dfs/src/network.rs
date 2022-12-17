@@ -18,7 +18,7 @@ pub const CLIENT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
 #[derive(Debug)]
 pub struct AppRaftNetwork {
-    nodes: HashMap<u64, NodeConnection>,
+    nodes: HashMap<NodeId, NodeConnection>,
 }
 
 impl AppRaftNetwork {
@@ -68,7 +68,7 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(
         &self,
-        target: u64,
+        target: NodeId,
         rpc: AppendEntriesRequest<AppClientRequest>,
     ) -> Result<AppendEntriesResponse> {
         let client = assume_client!(self, target, None);
@@ -78,7 +78,7 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn install_snapshot(
         &self,
-        target: u64,
+        target: NodeId,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse> {
         let client = assume_client!(self, target, None);
@@ -86,7 +86,7 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
+    async fn vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse> {
         let client = assume_client!(self, target, None);
         Ok(client.vote(context::current(), rpc).await?)
     }

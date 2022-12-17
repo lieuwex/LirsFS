@@ -3,11 +3,13 @@ use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Error, SqliteConnection};
 
+use crate::client_req::RequestSerial;
+
 use super::schema::{Schema, SqlxQuery};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutstandingWriteRow {
-    pub serial: u64,
+    pub serial: RequestSerial,
     pub file_path: Utf8PathBuf,
     pub node_id: i64,
 }

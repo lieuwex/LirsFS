@@ -18,6 +18,8 @@ use crate::{
     CONFIG,
 };
 
+pub type FileContentHash = u64;
+
 pub type Result<T> = std::result::Result<T, FileSystemError>;
 
 #[derive(Error, Debug)]
@@ -124,7 +126,7 @@ impl FileSystem {
         &self,
         _: &QueueReadHandle<'_>,
         path: impl AsRef<Utf8Path>,
-    ) -> Result<u64> {
+    ) -> Result<FileContentHash> {
         let file = File::open(self.map_path(path)).await?;
         let mut reader = BufReader::new(file);
 

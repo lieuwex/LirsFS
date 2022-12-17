@@ -11,6 +11,8 @@ use tokio::sync::{
     OwnedRwLockWriteGuard, RwLock,
 };
 
+use crate::client_req::RequestSerial;
+
 /// A read handle to a file in the queue.
 // Either::Left means that we own a plain lock read in the queue.
 // Either::Right is a reference to a write handle, so that we can coerce a write handle to a read
@@ -45,7 +47,7 @@ impl Drop for QueueWriteHandle {
 #[derive(Debug, Default)]
 struct QueueItem {
     lock: Arc<RwLock<()>>,
-    waiters: HashMap<u64, broadcast::Sender<()>>,
+    waiters: HashMap<RequestSerial, broadcast::Sender<()>>,
 }
 
 #[derive(Debug)]
@@ -67,7 +69,7 @@ impl Queue {
 
     // REVIEW: should this only be called on success?
     /// Mark the write command `serial` as finished.
-    pub async fn write_committed(&self, path: &Utf8Path, serial: u64) -> Result<()> {
+    pub async fn write_committed(&self, path: &Utf8Path, serial: RequestSerial) -> Result<()> {
         let mut items = self.items.lock().await;
 
         if let Some(item) = items.get_mut(path) {
@@ -90,7 +92,7 @@ impl Queue {
     pub async fn write(
         self: Arc<Self>,
         path: Utf8PathBuf,
-        serial: u64,
+        serial: RequestSerial,
     ) -> Result<QueueWriteHandle> {
         // channel to indicate that the caller of `get_write` is finished with the lock.
         let (htx, hrx) = oneshot::channel();

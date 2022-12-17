@@ -37,7 +37,7 @@ impl LastAppliedEntries {
         .await?
         .map(|record| {
             Ok(LastAppliedEntry {
-                id: record.last_entry_id as u64,
+                id: record.last_entry_id as RaftLogId,
                 contents: bincode::deserialize(&record.last_entry_contents)
                     .map_err(raftlog_deserialize_error)?,
             })
