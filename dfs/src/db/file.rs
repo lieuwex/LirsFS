@@ -3,7 +3,10 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::schema::{Schema, SqlxQuery};
-use crate::util::{blob_to_hash, flatten_result};
+use crate::{
+    filesystem::FileContentHash,
+    util::{blob_to_hash, flatten_result},
+};
 use anyhow::Result;
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
@@ -16,7 +19,7 @@ pub struct FileRow {
     pub file_path: Utf8PathBuf,
     pub file_size: u64,
     pub modified_at: SystemTime,
-    pub content_hash: Option<u64>,
+    pub content_hash: Option<FileContentHash>,
     pub replication_factor: u64,
     /// `false` means this is a directory
     pub is_file: bool,
@@ -146,7 +149,7 @@ impl File {
     pub async fn update_file_hash(
         conn: &mut SqliteConnection,
         path: &Utf8Path,
-        hash: Option<u64>,
+        hash: Option<FileContentHash>,
     ) -> Result<()> {
         let hash = hash.map(|h| h.to_be_bytes().to_vec());
         let path = path.as_str();

@@ -1,4 +1,4 @@
-use crate::{config::Config, CONFIG};
+use crate::{config::Config, filesystem::FileContentHash, CONFIG};
 use anyhow::{anyhow, bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use webdav_handler::davpath::DavPath;
@@ -29,7 +29,7 @@ pub fn prepend_fs_dir(file_path: &Utf8Path) -> Utf8PathBuf {
     full_path
 }
 
-pub fn blob_to_hash(hash: &[u8]) -> Result<u64> {
+pub fn blob_to_hash(hash: &[u8]) -> Result<FileContentHash> {
     if hash.len() != 8 {
         bail!(
             "expected hash to be 8 bytes, but it is {} bytes",
@@ -39,7 +39,7 @@ pub fn blob_to_hash(hash: &[u8]) -> Result<u64> {
 
     let mut bytes: [u8; 8] = [0; 8];
     bytes.copy_from_slice(hash);
-    Ok(u64::from_be_bytes(bytes))
+    Ok(FileContentHash::from_be_bytes(bytes))
 }
 
 pub fn davpath_to_pathbuf(path: &DavPath) -> Utf8PathBuf {

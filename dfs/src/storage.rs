@@ -1,6 +1,6 @@
 use crate::{
     assume_client,
-    client_req::AppClientRequest,
+    client_req::{AppClientRequest, RequestSerial},
     client_res::{AppClientResponse, ClientError},
     db::{
         self, curr_snapshot, db,
@@ -8,7 +8,7 @@ use crate::{
         keepers::Keepers,
         last_applied_entries::{LastAppliedEntries, LastAppliedEntry},
         nodes::{NodeStatus, Nodes},
-        raftlog::{RaftLog, RaftLogId},
+        raftlog::{RaftLog, RaftLogId, RaftLogTerm},
         schema::Schema,
         snapshot_meta::{SnapshotMeta, SnapshotMetaRow},
     },
@@ -60,7 +60,7 @@ pub struct AppRaftStorage {
 }
 
 async fn do_commit<'a, Fun, FunRet, ERR>(
-    serial: u64,
+    serial: RequestSerial,
     path: Utf8PathBuf,
     am_keeper: bool,
     f: Fun,
@@ -139,7 +139,7 @@ impl AppRaftStorage {
         &self,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
-        serial: u64,
+        serial: RequestSerial,
     ) -> Result<String, ClientError> {
         match op {
             ClientToNodeOperation::CreateFile {
@@ -235,7 +235,7 @@ impl AppRaftStorage {
         &self,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
-        serial: u64,
+        serial: RequestSerial,
     ) -> Result<String, ClientError> {
         use NodeToNodeOperation::*;
         match op {
@@ -419,7 +419,11 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         Ok(())
     }
     #[tracing::instrument(level = "trace", skip(self), ret)]
-    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<AppClientRequest>>> {
+    async fn get_log_entries(
+        &self,
+        start: RaftLogId,
+        stop: RaftLogId,
+    ) -> Result<Vec<Entry<AppClientRequest>>> {
         if start > stop {
             panic!(
                 "Invalid request to `get_log_entries`, start ({:?}) > stop ({:?})",
@@ -429,7 +433,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         Ok(RaftLog::get_range(db_conn!(), start, stop).await?)
     }
     #[tracing::instrument(level = "trace", skip(self), ret)]
-    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
+    async fn delete_logs_from(&self, start: RaftLogId, stop: Option<RaftLogId>) -> Result<()> {
         match stop {
             Some(stop) => RaftLog::delete_range(db_conn!(), start, stop).await,
             None => RaftLog::delete_from(db_conn!(), start).await,
@@ -449,7 +453,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn apply_entry_to_state_machine(
         &self,
-        index: &u64,
+        index: &RaftLogId,
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
@@ -476,7 +480,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn replicate_to_state_machine(
         &self,
-        entries: &[(&u64, &AppClientRequest)],
+        entries: &[(&RaftLogId, &AppClientRequest)],
     ) -> Result<()> {
         let mut tx = db().begin().await?;
         let mut entries = entries.iter().peekable();
@@ -582,10 +586,10 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn finalize_snapshot_installation(
         &self,
-        index: u64,
-        term: u64,
-        delete_through: Option<u64>,
-        id: String,
+        index: RaftLogId,
+        term: RaftLogTerm,
+        delete_through: Option<RaftLogId>,
+        snapshot_id: String,
         mut snapshot: Box<Self::Snapshot>,
     ) -> Result<()> {
         // REVIEW (lieuwe): I am not sure if this is correct, actually.
@@ -632,7 +636,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         RaftLog::insert(
             &mut tx,
-            iter::once(&Entry::new_snapshot_pointer(index, term, id, membership)),
+            iter::once(&Entry::new_snapshot_pointer(
+                index,
+                term,
+                snapshot_id,
+                membership,
+            )),
         )
         .await;
 

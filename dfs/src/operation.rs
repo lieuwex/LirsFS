@@ -4,6 +4,8 @@ use async_raft::NodeId;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
+use crate::{client_req::RequestSerial, filesystem::FileContentHash};
+
 /// Mutating operations that the Raft cluster can perform on the application's state machine (the file registry).
 /// An operation either comes from a fellow node (a [NodeToNodeOperation]) or a client (a [ClientToNodeOperation])
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -55,16 +57,16 @@ pub enum NodeToNodeOperation {
     /// Sent by a keeper when a previous file operation was unsuccessfully finished.
     FileCommitFail {
         /// The serial number of the operation to which this commit refers to.
-        serial: u64,
+        serial: RequestSerial,
         /// The reason this commit failed.
         failure_reason: String, // TODO: different type?
     },
     /// Sent by a keeper when a previous file operation was succesfully done.
     FileCommitSuccess {
         /// The serial number of the operation to which this commit refers to.
-        serial: u64,
+        serial: RequestSerial,
         /// XxHash64 value for the whole file content at this point, if any.
-        hash: Option<u64>,
+        hash: Option<FileContentHash>,
         /// The node this file was committed on
         node_id: NodeId,
         /// Path of the file that was committed

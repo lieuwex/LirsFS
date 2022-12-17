@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqliteRow, Row, SqliteConnection};
 
 use super::nodes::NodeStatus;
-use crate::{util::blob_to_hash, RAFT};
+use crate::{filesystem::FileContentHash, util::blob_to_hash, RAFT};
 
 use super::schema::{Schema, SqlxQuery};
 
@@ -17,7 +17,7 @@ pub struct KeepersRow {
     pub id: i64,
     pub path: Utf8PathBuf,
     pub node_id: NodeId,
-    pub hash: u64,
+    pub hash: FileContentHash,
 }
 
 pub struct Keepers;
@@ -103,7 +103,7 @@ impl Keepers {
                 },
                 node_id: {
                     let id: i64 = row.get("node_id");
-                    u64::try_from(id)?
+                    NodeId::try_from(id)?
                 },
 
                 hash: blob_to_hash(row.get("hash"))?,
