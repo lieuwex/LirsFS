@@ -100,13 +100,6 @@ async fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    // Build our Raft runtime config, then instantiate our
-    // RaftNetwork & RaftStorage impls.
-    let raft_config = Arc::new(
-        Config::build(CONFIG.cluster_name.clone())
-            .validate()
-            .expect("Failed to build Raft config"),
-    );
     DB.set(
         Database::from_path(&CONFIG.file_registry)
             .await
@@ -114,18 +107,25 @@ async fn main() {
     )
     .expect("DB already set");
 
-    // TODO: put behind some CLI flag?
-    // create_all_tables(DB.get().unwrap()).await;
-
-    tokio::spawn(async {
-        let listen_addr = CONFIG.get_own_tarpc_addr();
-        rpc::server(listen_addr).await;
-    });
-
-    // TODO: WEBDAV_FS, STORAGE
+    // Build our Raft runtime config, then instantiate our
+    // RaftNetwork & RaftStorage impls.
+    let raft_config = Arc::new(
+        Config::build(CONFIG.cluster_name.clone())
+            .validate()
+            .expect("Failed to build Raft config"),
+    );
 
     let network = Arc::new(AppRaftNetwork::new(raft_config.clone()));
     let storage = Arc::new(AppRaftStorage::new(raft_config.clone()));
+
+    NETWORK.set(network.clone()).expect("NETWORK already set");
+    WEBDAV_FS
+        .set(Arc::new(WebdavFilesystem {}))
+        .expect("WEBDAV_FS already set");
+    STORAGE.set(storage.clone()).expect("WEBDAV_FS already set");
+
+    // TODO: put behind some CLI flag?
+    // create_all_tables(DB.get().unwrap()).await;
 
     // Get our node's ID from stable storage.
     let node_id = storage.get_own_id();
@@ -133,10 +133,14 @@ async fn main() {
     // Create a new Raft node, which spawns an async task which
     // runs the Raft core logic. Keep this Raft instance around
     // for calling API methods based on events in your app.
-    let raft = RaftApp::new(Raft::new(node_id, raft_config, network.clone(), storage));
+    let raft = RaftApp::new(Raft::new(node_id, raft_config, network, storage));
 
-    NETWORK.set(network).unwrap();
     RAFT.set(raft.clone()).unwrap();
+
+    tokio::spawn(async {
+        let listen_addr = CONFIG.get_own_tarpc_addr();
+        rpc::server(listen_addr).await;
+    });
 
     run_app(raft).await; // This is subjective. Do it your own way.
                          // Just run your app, feeding Raft & client
