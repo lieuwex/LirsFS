@@ -25,7 +25,7 @@ impl AppRaftNetwork {
     pub fn new(raft_config: Arc<Config>) -> Self {
         let nodes: HashMap<_, _> = (CONFIG.nodes)
             .iter()
-            .map(|n| (n.id, NodeConnection::new(n.id, n.addr)))
+            .map(|n| (n.id, NodeConnection::new(n.id, n.tarpc_addr)))
             .collect();
 
         Self { nodes }

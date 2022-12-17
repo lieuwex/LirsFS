@@ -55,29 +55,30 @@ const fn default_reconnect_try_interval() -> Duration {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
-    pub addr: SocketAddr,
+    pub tarpc_addr: SocketAddr,
+    pub ssh_addr: SocketAddr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub node_id: NodeId,
     pub cluster_name: String,
+    pub node_id: NodeId,
     pub nodes: Vec<Node>,
-    pub listen_port: usize,
 
     #[serde(default = "default_file_dir")]
     pub file_dir: Utf8PathBuf,
+
+    #[serde(default = "default_file_registry")]
+    pub file_registry: Utf8PathBuf,
+    #[serde(default = "default_file_registry_snapshot")]
+    pub file_registry_snapshot: Utf8PathBuf,
+    #[serde(default = "default_hardstate_file")]
+    pub hardstate_file: Utf8PathBuf,
 
     #[serde(default = "default_ping_interval")]
     pub ping_interval: Duration,
     #[serde(default = "default_max_missed_pings")]
     pub max_missed_pings: usize,
-    #[serde(default = "default_file_registry")]
-    pub file_registry: Utf8PathBuf,
-    #[serde(default = "default_hardstate_file")]
-    pub hardstate_file: Utf8PathBuf,
-    #[serde(default = "default_file_registry_snapshot")]
-    pub file_registry_snapshot: Utf8PathBuf,
     #[serde(default = "default_reconnect_try_interval")]
     pub reconnect_try_interval_ms: Duration,
 }
@@ -129,8 +130,20 @@ impl Config {
         self.node_id
     }
 
-    pub fn get_node_ssh_host(&self, node_id: NodeId) -> Option<SocketAddr> {
+    fn find_node(&self, node_id: NodeId) -> Option<&Node> {
         // Yes, O(N), what are you going to do about it?
-        self.nodes.iter().find(|n| n.id == node_id).map(|n| n.addr)
+        self.nodes.iter().find(|n| n.id == node_id)
+    }
+
+    pub fn get_own_tarpc_addr(&self) -> SocketAddr {
+        let id = self.get_own_id();
+        let node = self
+            .find_node(id)
+            .expect("own node should be included in config");
+        node.tarpc_addr
+    }
+
+    pub fn get_node_ssh_host(&self, node_id: NodeId) -> Option<SocketAddr> {
+        self.find_node(node_id).map(|n| n.ssh_addr)
     }
 }

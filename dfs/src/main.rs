@@ -108,7 +108,7 @@ async fn main() {
     // create_all_tables(DB.get().unwrap()).await;
 
     tokio::spawn(async {
-        let listen_addr: SocketAddr = format!("[::]:{}", CONFIG.listen_port).parse().unwrap();
+        let listen_addr = CONFIG.get_own_tarpc_addr();
         rpc::server(listen_addr).await;
     });
 
