@@ -344,13 +344,13 @@ impl AppRaftStorage {
 impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     type Snapshot = tokio::fs::File;
     type ShutdownError = AppError;
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
         Ok(RaftLog::get_last_membership(db_conn!())
             .await?
             .unwrap_or_else(|| MembershipConfig::new_initial(self.get_own_id())))
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn get_initial_state(&self) -> Result<InitialState> {
         let hard_state = match self.read_hard_state().await? {
             Some(hs) => hs,
@@ -376,14 +376,14 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
 
         Ok(state)
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         // TODO: Also just store in SQLite?
         let path = &CONFIG.hardstate_file;
         tokio::fs::write(path, &bincode::serialize(hs)?).await?;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<AppClientRequest>>> {
         if start > stop {
             panic!(
@@ -393,7 +393,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         }
         Ok(RaftLog::get_range(db_conn!(), start, stop).await?)
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         match stop {
             Some(stop) => RaftLog::delete_range(db_conn!(), start, stop).await,
@@ -401,17 +401,17 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         }?;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn append_entry_to_log(&self, entry: &Entry<AppClientRequest>) -> Result<()> {
         RaftLog::insert(db_conn!(), std::slice::from_ref(entry)).await;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn replicate_to_log(&self, entries: &[Entry<AppClientRequest>]) -> Result<()> {
         RaftLog::insert(db_conn!(), entries).await;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn apply_entry_to_state_machine(
         &self,
         index: &u64,
@@ -440,7 +440,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         tx.commit().await?;
         Ok(response)
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn replicate_to_state_machine(
         &self,
         entries: &[(&u64, &AppClientRequest)],
@@ -483,7 +483,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         tx.commit().await?;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), err)]
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
         let mut tx = db().begin().await?;
 
@@ -525,7 +525,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             snapshot,
         })
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)> {
         trace!("create_snapshot");
         Ok((
@@ -540,7 +540,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             ),
         ))
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn finalize_snapshot_installation(
         &self,
         index: u64,
@@ -600,7 +600,7 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         tx.commit().await?;
         Ok(())
     }
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self), err)]
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
         let SnapshotMetaRow {
             last_applied_log,
