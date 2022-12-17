@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS outstanding_writes (
     -- REVIEW: I think serial numbers are globally unique.
-    serial      integer primary key not null,
+    request_id  blob primary key not null,
     file_path   text not null,
     node_id     integer not null,
 
