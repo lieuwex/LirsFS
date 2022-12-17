@@ -19,7 +19,7 @@ use raft_app::RaftApp;
 use storage::AppRaftStorage;
 use tokio::task::JoinHandle;
 use tracing::{field::debug, trace, Level};
-use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::{format::FmtSpan, writer};
 use webdav::WebdavFilesystem;
 
 mod client_req;
@@ -98,9 +98,15 @@ async fn run_app(raft: RaftApp) -> () {
 #[tokio::main]
 async fn main() {
     let _ = dotenv::dotenv();
-    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+
+    let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::TRACE)
         .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .with_writer(|| {
+            let log_file = format!("{}.log", CONFIG.get_own_id());
+            let file = tracing_appender::rolling::never("./logs/", log_file);
+            writer::Tee::new(file, std::io::stderr())
+        })
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 

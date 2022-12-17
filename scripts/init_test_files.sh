@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 rm -rfv ./dfs/data/
+rm -rfv ./dfs/logs/
 rm -fv ./dfs/config*.toml
 
 nodes=$(seq 0 2)
