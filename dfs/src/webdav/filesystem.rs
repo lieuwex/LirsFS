@@ -2,6 +2,7 @@ use anyhow::{anyhow, Ok, Result};
 use async_raft::NodeId;
 use futures::prelude::*;
 use std::time::SystemTime;
+use tracing::error;
 use webdav_handler::{
     davpath::DavPath,
     fs::{
@@ -77,7 +78,7 @@ where
         }
         .await
         .map_err(|e| {
-            eprintln!("Catched webdav filesystem error: {:?}", e);
+            error!("Catched webdav filesystem error: {:?}", e);
             FsError::GeneralFailure
         })?;
         std::result::Result::Ok(res)

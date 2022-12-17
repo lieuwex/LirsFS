@@ -3,6 +3,7 @@ use std::ops::Deref;
 use anyhow::Result;
 use futures::prelude::*;
 use tarpc::context::Context;
+use tracing::error;
 use webdav_handler::{
     davpath::DavPath,
     fs::{DavFile, DavFileSystem, DavMetaData, FsError, FsFuture},
@@ -63,7 +64,7 @@ where
         }
         .await
         .map_err(|e| {
-            eprintln!("Catched webdav file error: {:?}", e);
+            error!("Catched webdav filesystem error: {:?}", e);
             FsError::GeneralFailure
         })?;
         Ok(res)

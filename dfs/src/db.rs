@@ -31,6 +31,7 @@ impl Database {
         format!("sqlite://{}", path.as_str())
     }
 
+    #[tracing::instrument(level = "trace")]
     pub async fn from_path(path: &Utf8Path) -> Result<Self> {
         let pool = SqlitePool::connect(&Self::map_path(path)).await?;
         Ok(Database { pool })

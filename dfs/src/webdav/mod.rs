@@ -16,6 +16,7 @@ use std::{convert::Infallible, net::SocketAddr};
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request, Response};
 use tokio::{sync::OwnedRwLockReadGuard, time::Instant};
+use tracing::{error, trace};
 use webdav_handler::{fakels::FakeLs, fs::DavFileSystem, DavHandler};
 
 use crate::{service::ServiceClient, RAFT, WEBDAV_FS};
@@ -24,6 +25,7 @@ use self::fspointer::FsPointer;
 
 type Client = OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient>;
 
+#[tracing::instrument(level = "trace")]
 pub async fn listen(addr: &SocketAddr) -> Result<()> {
     let fs: Box<dyn DavFileSystem> = Box::new(FsPointer(WEBDAV_FS.get().unwrap().clone()));
     let dav_server = DavHandler::builder()
@@ -44,12 +46,12 @@ pub async fn listen(addr: &SocketAddr) -> Result<()> {
                     // But to be sure I will keep it here and profile it.
                     let start = Instant::now();
                     let read = raft.client_read().await;
-                    eprintln!("raft.client_read() took {:?}", start.elapsed());
+                    trace!("raft.client_read() took {:?}", start.elapsed());
 
                     let res = match read {
                         Ok(_) => dav_server.handle(req).await,
                         Err(e) => {
-                            eprintln!("catched raft error before webdav: {:?}", e);
+                            error!("catched raft error before webdav: {:?}", e);
 
                             let mut resp = Response::builder();
                             resp = resp.header("Content-Length", "0").status(500); // TODO
