@@ -601,12 +601,6 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     }
     #[tracing::instrument(level = "trace", skip(self), err)]
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
-        let SnapshotMetaRow {
-            last_applied_log,
-            term,
-            membership,
-        } = SnapshotMeta::get(&mut curr_snapshot().await?).await?;
-
         let file = match tokio::fs::File::open(&CONFIG.file_registry_snapshot).await {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -618,6 +612,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 CONFIG.file_registry_snapshot, err
             ),
         };
+
+        let SnapshotMetaRow {
+            last_applied_log,
+            term,
+            membership,
+        } = SnapshotMeta::get(&mut curr_snapshot().await?).await?;
 
         Ok(Some(CurrentSnapshotData::<Self::Snapshot> {
             index: last_applied_log,
