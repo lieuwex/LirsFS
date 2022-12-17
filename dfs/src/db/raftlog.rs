@@ -134,7 +134,8 @@ impl RaftLog {
     where
         I: IntoIterator<Item = &'b Entry<AppClientRequest>>,
     {
-        let mut query = QueryBuilder::<Sqlite>::new("INSERT INTO raftlog (id,term,entry) ");
+        let mut query =
+            QueryBuilder::<Sqlite>::new("INSERT INTO raftlog (id,term,entry,entry_type) ");
         let values_to_insert = entries.into_iter().map(RaftLogRow::from);
 
         query.push_values(

@@ -1,15 +1,17 @@
 #![allow(unused_labels)]
 
 use std::{
+    collections::HashSet,
     env, fs,
     net::{IpAddr, SocketAddr},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use crate::db::schema::create_all_tables;
 use async_raft::{Config, Raft};
-use db::Database;
+use db::{raftlog::RaftLog, Database};
 use filesystem::FileSystem;
 use network::AppRaftNetwork;
 use once_cell::sync::{Lazy, OnceCell};
@@ -57,6 +59,13 @@ pub static DB: OnceCell<Database> = OnceCell::new();
 #[tracing::instrument(level = "trace")]
 async fn run_app(raft: RaftApp) -> () {
     let mut server_task: Option<JoinHandle<()>> = None;
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let membership: HashSet<_> = CONFIG.nodes.iter().map(|n| n.id).collect();
+    if let Err(_) = raft.initialize(membership.clone()).await {
+        let _ = raft.change_membership(membership).await;
+    }
 
     let mut metrics = raft.app.metrics().clone();
     loop {
