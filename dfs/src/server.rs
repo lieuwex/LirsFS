@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use async_raft::raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse};
 use camino::Utf8PathBuf;
 use tarpc::context::Context;
+use tracing::trace;
 
 use crate::{
     service::Service,
@@ -19,6 +20,7 @@ pub struct Server {
 
 #[tarpc::server]
 impl Service for Server {
+    #[tracing::instrument(level = "trace")]
     async fn append_entries(
         self,
         _: Context,
@@ -28,6 +30,7 @@ impl Service for Server {
         raft.append_entries(request).await.unwrap()
     }
 
+    #[tracing::instrument(level = "trace")]
     async fn install_snapshot(
         self,
         _: tarpc::context::Context,
@@ -37,16 +40,23 @@ impl Service for Server {
         raft.install_snapshot(request).await.unwrap()
     }
 
+    #[tracing::instrument(level = "trace")]
     async fn vote(self, _: Context, request: async_raft::raft::VoteRequest) -> VoteResponse {
         let raft = RAFT.get().unwrap();
         raft.vote(request).await.unwrap()
     }
 
-    async fn ping(self, _: Context) {}
+    #[tracing::instrument(level = "trace")]
+    async fn ping(self, _: Context) {
+        trace!("rx ping")
+    }
 
+    #[tracing::instrument(level = "trace")]
     async fn read_dir(self, _: Context, path: Utf8PathBuf) -> Vec<DirEntry> {
         FILE_SYSTEM.read_dir(path).await.unwrap()
     }
+
+    #[tracing::instrument(level = "trace")]
     async fn read_bytes(
         self,
         _: Context,

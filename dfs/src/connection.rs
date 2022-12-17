@@ -17,7 +17,7 @@ use tokio::{
     time,
 };
 use tokio_serde::formats::Bincode;
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::{service::ServiceClient, CONFIG};
 
@@ -77,10 +77,9 @@ async fn pinger(
                         Ok(c) => c,
                         Err(e) => {
                             let interval = CONFIG.reconnect_try_interval_ms;
-                            trace!(
+                            debug!(
                                 "error while connecting, retrying in {:?}: {:?}",
-                                interval,
-                                e
+                                interval, e
                             );
                             time::sleep(interval).await;
                             continue 'reconnect;
@@ -95,6 +94,7 @@ async fn pinger(
                 Some(c) => c,
             };
 
+            trace!("tx ping");
             match client.ping(context::current()).await {
                 Err(e) => {
                     missed_count += 1;
@@ -107,13 +107,14 @@ async fn pinger(
                     );
 
                     if missed_count > CONFIG.max_missed_pings {
-                        trace!("reconnecting {} to {}", node_id, addr);
+                        debug!("reconnecting");
                         *lock = None;
                         set_state!(ConnectionState::Reconnecting { failure_reason: e });
                         continue 'reconnect;
                     }
                 }
                 Ok(()) => {
+                    trace!("rx pong");
                     missed_count = 0;
                 }
             }

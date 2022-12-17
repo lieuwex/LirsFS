@@ -16,7 +16,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
 use tokio::task::JoinHandle;
-use tracing::Level;
+use tracing::{debug, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use webdav::WebdavFilesystem;
 
@@ -54,7 +54,8 @@ pub static WEBDAV_FS: OnceCell<Arc<WebdavFilesystem>> = OnceCell::new();
 pub static STORAGE: OnceCell<Arc<AppRaftStorage>> = OnceCell::new();
 pub static DB: OnceCell<Database> = OnceCell::new();
 
-async fn run_app(raft: RaftApp) -> ! {
+#[tracing::instrument(level = "trace")]
+async fn run_app(raft: RaftApp) -> () {
     let mut server_task: Option<JoinHandle<()>> = None;
 
     let mut metrics = raft.app.metrics().clone();
@@ -62,6 +63,8 @@ async fn run_app(raft: RaftApp) -> ! {
         metrics.changed().await.unwrap();
         let m = metrics.borrow();
         let am_leader = m.current_leader == Some(m.id);
+
+        debug!("{:?} {:?}", am_leader, server_task.take());
 
         // control webdav server job
         match (am_leader, server_task.take()) {
