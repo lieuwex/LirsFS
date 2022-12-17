@@ -16,7 +16,7 @@ use std::{convert::Infallible, net::SocketAddr};
 use anyhow::{anyhow, Result};
 use hyper::{Body, Request, Response};
 use tokio::{sync::OwnedRwLockReadGuard, time::Instant};
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use webdav_handler::{fakels::FakeLs, fs::DavFileSystem, DavHandler};
 
 use crate::{service::ServiceClient, RAFT, WEBDAV_FS};
@@ -66,6 +66,7 @@ pub async fn listen(addr: &SocketAddr) -> Result<()> {
         }
     });
 
+    info!("binding WEBDAV server");
     hyper::Server::bind(addr)
         .serve(service)
         .await
