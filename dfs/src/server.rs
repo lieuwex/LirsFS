@@ -1,11 +1,15 @@
 use std::net::SocketAddr;
 
-use async_raft::raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse};
+use async_raft::{
+    raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse},
+    NodeId,
+};
 use camino::Utf8PathBuf;
 use tarpc::context::Context;
 use tracing::trace;
 
 use crate::{
+    rsync,
     service::Service,
     webdav::{DirEntry, SeekFrom},
     FILE_SYSTEM, RAFT, STORAGE,
@@ -73,5 +77,22 @@ impl Service for Server {
             .read_bytes(&lock, path, pos, count)
             .await
             .unwrap()
+    }
+
+    #[tracing::instrument(level = "trace")]
+    async fn copy_file_to(
+        self,
+        _: Context,
+        target: NodeId,
+        path: Utf8PathBuf,
+    ) -> Result<(), String> {
+        let storage = STORAGE.get().unwrap();
+        let lock = storage.get_queue().read(path.clone()).await;
+        rsync::copy_to(target, &path)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        drop(lock);
+        Ok(())
     }
 }

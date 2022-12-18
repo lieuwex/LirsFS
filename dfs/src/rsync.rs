@@ -5,19 +5,25 @@ use tokio::process::Command;
 
 use crate::{util, CONFIG};
 
-pub async fn copy_from(node_id: NodeId, filename: &Utf8Path) -> Result<()> {
-    let remote_host = CONFIG
-        .get_node_ssh_host(node_id)
-        .ok_or_else(|| anyhow!("Node with id {:?} has no known socket address", node_id))?;
+pub async fn copy_to(target_node: NodeId, filename: &Utf8Path) -> Result<()> {
+    let remote_host = CONFIG.get_node_ssh_host(target_node).ok_or_else(|| {
+        anyhow!(
+            "Target node with id {:?} has no known socket address",
+            target_node
+        )
+    })?;
     let full_path = util::prepend_fs_dir(filename);
 
     let output = Command::new("rsync")
+        .arg(&full_path)
         .arg(format!("{remote_host}:{full_path}"))
-        .arg(full_path)
         .output()
         .await?;
     if !output.status.success() {
-        // TODO: If we implement logging, log the stderr/stdout of `rsync` on error
+        let error = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(
+            "Rsync returned an error copying file {filename} to node {target_node}: {error:#?}"
+        );
         Err(anyhow!(
             "Rsync returned an error status code: {:#?}",
             output.status.code()
