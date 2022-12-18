@@ -13,7 +13,10 @@ use webdav_handler::{
 
 use crate::{
     assume_client,
-    db::{db, file::File},
+    db::{
+        db,
+        file::{File, FileRow},
+    },
     db_conn,
     operation::ClientToNodeOperation,
     util::davpath_to_pathbuf,
@@ -140,8 +143,21 @@ impl DavFileSystem for WebdavFilesystem {
         let path = davpath_to_pathbuf(path);
 
         do_fs(move || async move {
-            let file = File::get_by_path(db_conn!(), &path).await?;
-            let file = file.ok_or_else(|| anyhow!("file not found"))?;
+            // handle / as a special case
+            let file = if path == "/" {
+                FileRow {
+                    file_path: path,
+                    file_size: 0,
+                    modified_at: SystemTime::UNIX_EPOCH, // TODO: make this actually something smh
+                    content_hash: None,
+                    replication_factor: 0,
+                    is_file: false,
+                }
+            } else {
+                let file = File::get_by_path(db_conn!(), &path).await?;
+                file.ok_or_else(|| anyhow!("file not found"))?
+            };
+
             let res: Box<dyn DavMetaData> = Box::new(file);
             Ok(res)
         })
