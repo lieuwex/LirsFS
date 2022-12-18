@@ -7,7 +7,7 @@ use async_raft::{
 
 use crate::{
     client_req::AppClientRequest, client_res::AppClientResponse, network::AppRaftNetwork,
-    storage::AppRaftStorage,
+    storage::AppRaftStorage, NETWORK,
 };
 
 /// Wrapper over [Raft]. Necessary because [Raft] does not implement [Debug].
@@ -27,9 +27,21 @@ impl RaftApp {
         &self,
         request: Req,
     ) -> Result<ClientWriteResponse<AppClientResponse>, ClientWriteError<AppClientRequest>> {
-        self.app
+        match self
+            .app
             .client_write(ClientWriteRequest::new(request.into()))
             .await
+        {
+            Ok(r) => Ok(r),
+            Err(ClientWriteError::ForwardToLeader(req, Some(node_id))) => {
+                let network = NETWORK.get().unwrap();
+                Ok(network
+                    .client_write(node_id, req.clone())
+                    .await
+                    .map_err(|err| ClientWriteError::ForwardToLeader(req, None))?)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Get the current leader of the Raft cluster. If no leader exists (i.e., an election is in progress), wait for the new leader.

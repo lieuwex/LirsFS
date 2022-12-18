@@ -1,11 +1,16 @@
 use std::net::SocketAddr;
 
-use async_raft::raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse};
+use async_raft::raft::{
+    AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
+    InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
+};
 use camino::Utf8PathBuf;
 use tarpc::context::Context;
 use tracing::trace;
 
 use crate::{
+    client_req::AppClientRequest,
+    client_res::AppClientResponse,
     service::Service,
     webdav::{DirEntry, SeekFrom},
     FILE_SYSTEM, RAFT, STORAGE,
@@ -44,6 +49,19 @@ impl Service for Server {
     async fn vote(self, _: Context, request: async_raft::raft::VoteRequest) -> VoteResponse {
         let raft = RAFT.get().unwrap();
         raft.vote(request).await.unwrap()
+    }
+
+    #[tracing::instrument(level = "trace")]
+    async fn client_write(
+        self,
+        _: Context,
+        request: AppClientRequest,
+    ) -> ClientWriteResponse<AppClientResponse> {
+        let raft = RAFT.get().unwrap();
+        raft.app
+            .client_write(ClientWriteRequest::new(request))
+            .await
+            .unwrap()
     }
 
     #[tracing::instrument(level = "trace")]

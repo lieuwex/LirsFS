@@ -1,11 +1,12 @@
 use async_raft::raft::{
-    AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest, InstallSnapshotResponse,
-    VoteRequest, VoteResponse,
+    AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
+    InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
 };
 use camino::Utf8PathBuf;
 
 use crate::{
     client_req::AppClientRequest,
+    client_res::AppClientResponse,
     webdav::{DirEntry, SeekFrom},
 };
 
@@ -17,6 +18,8 @@ pub trait Service {
     ) -> AppendEntriesResponse;
     async fn install_snapshot(request: InstallSnapshotRequest) -> InstallSnapshotResponse;
     async fn vote(request: VoteRequest) -> VoteResponse;
+
+    async fn client_write(request: AppClientRequest) -> ClientWriteResponse<AppClientResponse>;
 
     async fn ping();
 
