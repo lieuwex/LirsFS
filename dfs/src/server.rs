@@ -1,7 +1,10 @@
 use std::net::SocketAddr;
 
 use async_raft::{
-    raft::{AppendEntriesResponse, InstallSnapshotResponse, VoteResponse},
+    raft::{
+        AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
+        InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
+    },
     NodeId,
 };
 use camino::Utf8PathBuf;
@@ -9,6 +12,8 @@ use tarpc::context::Context;
 use tracing::trace;
 
 use crate::{
+    client_req::AppClientRequest,
+    client_res::AppClientResponse,
     rsync,
     service::Service,
     webdav::{DirEntry, SeekFrom},
@@ -51,13 +56,26 @@ impl Service for Server {
     }
 
     #[tracing::instrument(level = "trace")]
+    async fn client_write(
+        self,
+        _: Context,
+        request: AppClientRequest,
+    ) -> ClientWriteResponse<AppClientResponse> {
+        let raft = RAFT.get().unwrap();
+        raft.app
+            .client_write(ClientWriteRequest::new(request))
+            .await
+            .unwrap()
+    }
+
+    #[tracing::instrument(level = "trace")]
     async fn ping(self, _: Context) {
         trace!("rx ping")
     }
 
     #[tracing::instrument(level = "trace")]
     async fn read_dir(self, _: Context, path: Utf8PathBuf) -> Vec<DirEntry> {
-        FILE_SYSTEM.read_dir(path).await.unwrap()
+        FILE_SYSTEM.read_dir(&path).await.unwrap()
     }
 
     #[tracing::instrument(level = "trace")]
@@ -74,7 +92,7 @@ impl Service for Server {
         let pos: std::io::SeekFrom = pos.into();
 
         FILE_SYSTEM
-            .read_bytes(&lock, path, pos, count)
+            .read_bytes(&lock, &path, pos, count)
             .await
             .unwrap()
     }

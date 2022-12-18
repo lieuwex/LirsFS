@@ -47,7 +47,7 @@ impl DavMetaData for FileRow {
     }
 
     fn is_dir(&self) -> bool {
-        false
+        !self.is_file
     }
 }
 

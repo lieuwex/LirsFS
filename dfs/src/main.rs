@@ -18,8 +18,11 @@ use once_cell::sync::{Lazy, OnceCell};
 use raft_app::RaftApp;
 use storage::AppRaftStorage;
 use tokio::task::JoinHandle;
-use tracing::{field::debug, trace, Level};
-use tracing_subscriber::fmt::{format::FmtSpan, writer};
+use tracing::{
+    field::{debug, FieldSet, ValueSet},
+    trace, Level,
+};
+use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
 use webdav::WebdavFilesystem;
 
 mod client_req;
@@ -69,15 +72,15 @@ async fn run_app(raft: RaftApp) -> () {
 
     let mut metrics = raft.app.metrics().clone();
     loop {
-        metrics.changed().await.unwrap();
+        metrics.changed().await.expect("raft shut down");
         let m = metrics.borrow();
         let am_leader = m.current_leader == Some(m.id);
 
-        let span = tracing::Span::current();
-        span.record("raft", debug(&raft));
-        span.record("am_leader", am_leader);
-        span.record("server_task", debug(&server_task));
-        trace!("run_app tick");
+        trace!(
+            raft = debug(&raft),
+            am_leader = am_leader,
+            server_task = debug(&server_task),
+        );
 
         // control webdav server job
         match (am_leader, server_task.take()) {
@@ -99,15 +102,28 @@ async fn run_app(raft: RaftApp) -> () {
 async fn main() {
     let _ = dotenv::dotenv();
 
+    // stderr
     let subscriber = tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::FULL)
+        .with_file(true)
+        .with_line_number(true)
         .with_max_level(Level::TRACE)
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-        .with_writer(|| {
-            let log_file = format!("{}.log", CONFIG.get_own_id());
-            let file = tracing_appender::rolling::never("./logs/", log_file);
-            writer::Tee::new(file, std::io::stderr())
-        })
         .finish();
+
+    // file
+    let subscriber = subscriber.with({
+        tracing_subscriber::fmt::Layer::default()
+            .compact()
+            .with_span_events(FmtSpan::FULL)
+            .with_ansi(false)
+            .with_file(true)
+            .with_line_number(true)
+            .with_writer(|| {
+                let log_file = format!("{}.log", CONFIG.get_own_id());
+                tracing_appender::rolling::never("./logs/", log_file)
+            })
+    });
+
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     DB.set(
@@ -121,6 +137,7 @@ async fn main() {
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
         Config::build(CONFIG.cluster_name.clone())
+            .heartbeat_interval(300)
             .validate()
             .expect("Failed to build Raft config"),
     );
@@ -152,7 +169,5 @@ async fn main() {
         rpc::server(listen_addr).await;
     });
 
-    run_app(raft).await; // This is subjective. Do it your own way.
-                         // Just run your app, feeding Raft & client
-                         // RPCs into the Raft node as they arrive.
+    run_app(raft).await;
 }

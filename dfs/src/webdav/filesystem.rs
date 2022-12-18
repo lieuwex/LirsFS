@@ -13,7 +13,10 @@ use webdav_handler::{
 
 use crate::{
     assume_client,
-    db::{db, file::File},
+    db::{
+        db,
+        file::{File, FileRow},
+    },
     db_conn,
     operation::ClientToNodeOperation,
     util::davpath_to_pathbuf,
@@ -51,7 +54,7 @@ impl WebdavFilesystem {
                 .map(|&n| {
                     Box::pin(async move {
                         // TODO: improve error handling
-                        let cl = assume_client!(n);
+                        let (_, cl) = assume_client!(n);
                         Ok((n, cl))
                     })
                 })
@@ -102,6 +105,7 @@ where
 }
 
 impl DavFileSystem for WebdavFilesystem {
+    #[tracing::instrument(level = "trace", skip(self))]
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
         let path = path.clone();
         do_fs(move || async move {
@@ -111,6 +115,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn read_dir<'a>(
         &'a self,
         path: &'a DavPath,
@@ -133,17 +138,32 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
         let path = davpath_to_pathbuf(path);
 
         do_fs(move || async move {
-            let file = File::get_by_path(db_conn!(), &path).await?;
-            let file = file.ok_or_else(|| anyhow!("file not found"))?;
+            // handle / as a special case
+            let file = if path == "/" {
+                FileRow {
+                    file_path: path,
+                    file_size: 0,
+                    modified_at: SystemTime::UNIX_EPOCH, // TODO: make this actually something smh
+                    content_hash: None,
+                    replication_factor: 0,
+                    is_file: false,
+                }
+            } else {
+                let file = File::get_by_path(db_conn!(), &path).await?;
+                file.ok_or_else(|| anyhow!("file not found"))?
+            };
+
             let res: Box<dyn DavMetaData> = Box::new(file);
             Ok(res)
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn create_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -156,6 +176,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn remove_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let stream = self.read_dir(path, ReadDirMeta::None).await?;
@@ -185,6 +206,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn remove_file<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -197,6 +219,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -210,6 +233,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -223,10 +247,12 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_accessed<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
         todo!()
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_modified<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
         todo!()
     }

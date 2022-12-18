@@ -22,7 +22,7 @@ pub type RaftLogId = u64;
 /// but in our application, use it as a u64.
 pub type RaftLogTerm = u64;
 
-/// Store operations that the Raft cluster should perform as raw bytes, serialized by `bincode`.
+/// Store operations that the Raft cluster should perform as raw bytes, serialized using JSON.
 pub type RaftLogEntry = Vec<u8>;
 
 pub enum RaftLogEntryType {
@@ -198,7 +198,8 @@ impl RaftLog {
             vec.push(Entry {
                 term: record.term as RaftLogTerm,
                 index: record.id as RaftLogId,
-                payload: bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?,
+                payload: serde_json::from_slice(&record.entry)
+                    .map_err(raftlog_deserialize_error)?,
             });
             Ok(vec)
         })
@@ -225,7 +226,8 @@ impl RaftLog {
             Ok(Entry {
                 term: record.term as RaftLogTerm,
                 index: record.id as RaftLogId,
-                payload: bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?,
+                payload: serde_json::from_slice(&record.entry)
+                    .map_err(raftlog_deserialize_error)?,
             })
         })
         .transpose()
@@ -252,7 +254,7 @@ impl RaftLog {
             || Ok(None),
             |record| {
                 let deserialized: Entry<AppClientRequest> =
-                    bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?;
+                    serde_json::from_slice(&record.entry).map_err(raftlog_deserialize_error)?;
                 match deserialized.payload {
                     EntryPayload::ConfigChange(EntryConfigChange { membership }) => {
                         Ok(Some(membership))
@@ -286,7 +288,7 @@ impl RaftLog {
         .await?;
         if let Some(record) = record {
             let entry: Entry<AppClientRequest> =
-                bincode::deserialize(&record.entry).map_err(raftlog_deserialize_error)?;
+                serde_json::from_slice(&record.entry).map_err(raftlog_deserialize_error)?;
             match entry.payload {
                 EntryPayload::ConfigChange(EntryConfigChange { membership }) => {
                     Ok(Some(membership))
@@ -331,7 +333,7 @@ impl From<&Entry<AppClientRequest>> for RaftLogRow {
         Self {
             id: entry.index,
             term: entry.term,
-            entry: bincode::serialize(&entry.payload).unwrap_or_else(|err| {
+            entry: serde_json::to_vec(&entry.payload).unwrap_or_else(|err| {
                 panic!("Error serializing log entry {:#?}: {:?}", entry, err)
             }),
             entry_type: RaftLogEntryType::from(&entry.payload),

@@ -165,7 +165,7 @@ impl AppRaftStorage {
                     }
 
                     if am_keeper {
-                        FILE_SYSTEM.create_file(&lock, path).await?;
+                        FILE_SYSTEM.create_file(&lock, &path).await?;
                     }
 
                     tx.commit().await?;
@@ -323,7 +323,9 @@ impl AppRaftStorage {
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No active keeper found for file {:#?}. This probably means the file has been lost.", path))?;
 
-                if let Err(err) = assume_client!(keeper)
+                let (_, client) = assume_client!(keeper);
+
+                if let Err(err) = client
                     .copy_file_to(Context::current(), keeper, path.clone())
                     .await?
                 {

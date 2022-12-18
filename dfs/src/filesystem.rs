@@ -44,15 +44,13 @@ impl FileSystem {
         Self {}
     }
 
-    fn map_path(&self, path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
+    #[tracing::instrument(level = "trace", skip(self), ret)]
+    fn map_path(&self, path: &Utf8Path) -> Utf8PathBuf {
         CONFIG.file_dir.join(path)
     }
 
-    pub async fn create_file(
-        &self,
-        _: &QueueWriteHandle,
-        path: impl AsRef<Utf8Path>,
-    ) -> Result<File> {
+    #[tracing::instrument(level = "trace", skip(self), ret)]
+    pub async fn create_file(&self, _: &QueueWriteHandle, path: &Utf8Path) -> Result<File> {
         let path = self.map_path(path);
         let file = OpenOptions::new()
             .write(true)
@@ -62,10 +60,11 @@ impl FileSystem {
         Ok(file)
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub async fn remove_file(
         &self,
         _: &QueueWriteHandle,
-        path: impl AsRef<Utf8Path>,
+        path: &Utf8Path,
         is_dir: bool,
     ) -> Result<()> {
         let path = self.map_path(path);
@@ -77,7 +76,8 @@ impl FileSystem {
         Ok(())
     }
 
-    pub async fn read_dir(&self, path: impl AsRef<Utf8Path>) -> Result<Vec<DirEntry>> {
+    #[tracing::instrument(level = "trace", skip(self), ret)]
+    pub async fn read_dir(&self, path: &Utf8Path) -> Result<Vec<DirEntry>> {
         let path = self.map_path(path);
 
         let mut res = Vec::new();
@@ -89,10 +89,11 @@ impl FileSystem {
         Ok(res)
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub async fn write_bytes(
         &self,
         _: &QueueWriteHandle,
-        path: impl AsRef<Utf8Path>,
+        path: &Utf8Path,
         pos: SeekFrom,
         buf: &[u8],
     ) -> Result<()> {
@@ -106,10 +107,11 @@ impl FileSystem {
         file.write_all(buf).await?; // REVIEW: do we want to use write_all?
         Ok(())
     }
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub async fn read_bytes(
         &self,
         _: &QueueReadHandle<'_>,
-        path: impl AsRef<Utf8Path>,
+        path: &Utf8Path,
         pos: SeekFrom,
         count: usize,
     ) -> Result<Vec<u8>> {
@@ -122,10 +124,11 @@ impl FileSystem {
         Ok(vec)
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub async fn get_hash(
         &self,
         _: &QueueReadHandle<'_>,
-        path: impl AsRef<Utf8Path>,
+        path: &Utf8Path,
     ) -> Result<FileContentHash> {
         let file = File::open(self.map_path(path)).await?;
         let mut reader = BufReader::new(file);

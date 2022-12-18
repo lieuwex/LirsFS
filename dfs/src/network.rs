@@ -4,14 +4,16 @@ use anyhow::{anyhow, Result};
 use async_raft::{
     async_trait::async_trait,
     raft::{
-        AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
+        AppendEntriesRequest, AppendEntriesResponse, ClientWriteResponse, InstallSnapshotRequest,
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
-    Config, NodeId, RaftNetwork,
+    ClientWriteError, Config, NodeId, RaftNetwork,
 };
 use tarpc::context;
 
-use crate::{client_req::AppClientRequest, connection::NodeConnection, CONFIG};
+use crate::{
+    client_req::AppClientRequest, client_res::AppClientResponse, connection::NodeConnection, CONFIG,
+};
 
 pub const CLIENT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -46,9 +48,9 @@ macro_rules! assume_client {
 
         let fut = node.get_client();
         if let Some(timeout) = $timeout {
-            tokio::time::timeout(timeout, fut).await?
+            (node, tokio::time::timeout(timeout, fut).await?)
         } else {
-            fut.await
+            (node, fut.await)
         }
     }};
 
@@ -63,6 +65,23 @@ macro_rules! assume_client {
     }};
 }
 
+impl AppRaftNetwork {
+    pub async fn client_write(
+        &self,
+        target: NodeId,
+        rpc: AppClientRequest,
+    ) -> Result<ClientWriteResponse<AppClientResponse>> {
+        let (node, client) = assume_client!(self, target, None);
+        match client.client_write(context::current(), rpc).await {
+            Err(e) => {
+                node.mark_dead().await;
+                Err(e.into())
+            }
+            Ok(r) => anyhow::Ok(r),
+        }
+    }
+}
+
 #[async_trait]
 impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
@@ -71,8 +90,14 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         target: NodeId,
         rpc: AppendEntriesRequest<AppClientRequest>,
     ) -> Result<AppendEntriesResponse> {
-        let client = assume_client!(self, target, None);
-        Ok(client.append_entries(context::current(), rpc).await?)
+        let (node, client) = assume_client!(self, target, None);
+        match client.append_entries(context::current(), rpc).await {
+            Err(e) => {
+                node.mark_dead().await;
+                Err(e.into())
+            }
+            Ok(r) => Ok(r),
+        }
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
@@ -81,13 +106,25 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         target: NodeId,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse> {
-        let client = assume_client!(self, target, None);
-        Ok(client.install_snapshot(context::current(), rpc).await?)
+        let (node, client) = assume_client!(self, target, None);
+        match client.install_snapshot(context::current(), rpc).await {
+            Err(e) => {
+                node.mark_dead().await;
+                Err(e.into())
+            }
+            Ok(r) => Ok(r),
+        }
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse> {
-        let client = assume_client!(self, target, None);
-        Ok(client.vote(context::current(), rpc).await?)
+        let (node, client) = assume_client!(self, target, None);
+        match client.vote(context::current(), rpc).await {
+            Err(e) => {
+                node.mark_dead().await;
+                Err(e.into())
+            }
+            Ok(r) => Ok(r),
+        }
     }
 }
