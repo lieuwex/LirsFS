@@ -1,6 +1,6 @@
 use crate::{
     assume_client,
-    client_req::{AppClientRequest, RequestSerial},
+    client_req::{AppClientRequest, RequestId},
     client_res::{AppClientResponse, ClientError},
     db::{
         self, curr_snapshot, db,
@@ -60,7 +60,7 @@ pub struct AppRaftStorage {
 }
 
 async fn do_commit<'a, Fun, FunRet, ERR>(
-    serial: RequestSerial,
+    request_id: RequestId,
     path: Utf8PathBuf,
     am_keeper: bool,
     f: Fun,
@@ -81,7 +81,7 @@ where
     let send_res = match (am_keeper, &res) {
         (true, &Ok((_, hash))) => {
             raft.client_write(NodeToNodeOperation::FileCommitSuccess {
-                serial,
+                request_id,
                 hash,
                 node_id: CONFIG.get_own_id(),
                 path,
@@ -91,7 +91,7 @@ where
         }
         (true, Err(e)) => {
             raft.client_write(NodeToNodeOperation::FileCommitFail {
-                serial,
+                request_id,
                 failure_reason: format!("{:?}", e),
             })
             .await?;
@@ -139,7 +139,7 @@ impl AppRaftStorage {
         &self,
         op: &ClientToNodeOperation,
         conn: &mut SqliteConnection,
-        serial: RequestSerial,
+        request_id: RequestId,
     ) -> Result<String, ClientError> {
         match op {
             ClientToNodeOperation::CreateFile {
@@ -149,9 +149,12 @@ impl AppRaftStorage {
             } => {
                 let am_keeper = initial_keepers.contains(&self.get_own_id());
 
-                do_commit(serial, path.clone(), am_keeper, move || async move {
+                do_commit(request_id, path.clone(), am_keeper, move || async move {
                     let mut tx = conn.begin().await?;
-                    let lock = self.get_queue().write(path.clone(), Some(serial)).await?;
+                    let lock = self
+                        .get_queue()
+                        .write(path.clone(), Some(request_id))
+                        .await?;
 
                     let path = File::create_file(&mut tx, path.clone(), *replication_factor)
                         .await?
@@ -186,8 +189,11 @@ impl AppRaftStorage {
                 contents,
             } => {
                 let am_keeper = Keepers::is_self_keeper(conn, path).await?;
-                do_commit(serial, path.clone(), am_keeper, move || async move {
-                    let lock = self.get_queue().write(path.clone(), Some(serial)).await?;
+                do_commit(request_id, path.clone(), am_keeper, move || async move {
+                    let lock = self
+                        .get_queue()
+                        .write(path.clone(), Some(request_id))
+                        .await?;
 
                     let res = if am_keeper {
                         FILE_SYSTEM
@@ -208,8 +214,11 @@ impl AppRaftStorage {
             o @ (ClientToNodeOperation::RemoveFile { path }
             | ClientToNodeOperation::RemoveDir { path }) => {
                 let am_keeper = Keepers::is_self_keeper(conn, path).await?;
-                do_commit(serial, path.clone(), am_keeper, move || async move {
-                    let lock = self.get_queue().write(path.clone(), Some(serial)).await?;
+                do_commit(request_id, path.clone(), am_keeper, move || async move {
+                    let lock = self
+                        .get_queue()
+                        .write(path.clone(), Some(request_id))
+                        .await?;
 
                     File::remove_file(conn, path).await?;
 
@@ -235,7 +244,7 @@ impl AppRaftStorage {
         &self,
         op: &NodeToNodeOperation,
         conn: &mut SqliteConnection,
-        serial: RequestSerial,
+        request_id: RequestId,
     ) -> Result<String, ClientError> {
         use NodeToNodeOperation::*;
         match op {
@@ -316,7 +325,7 @@ impl AppRaftStorage {
 
                 if let Err(err) = Rsync::copy_from(keeper, path).await {
                     raft.client_write(FileCommitFail {
-                        serial,
+                        request_id,
                         failure_reason: format!(
                             "Could not `rsync` file {} from node {}",
                             path, keeper
@@ -334,7 +343,7 @@ impl AppRaftStorage {
                         // so try to remove the file from our fs.
                         tokio::fs::remove_file(path).await.ok();
                         raft.client_write(FileCommitFail {
-                            serial,
+                            request_id,
                             failure_reason: format!("Could not calculate hash of file {}", path),
                         })
                         .await?;
@@ -343,7 +352,7 @@ impl AppRaftStorage {
                 };
                 let own_id = self.get_own_id();
                 raft.client_write(FileCommitSuccess {
-                    serial,
+                    request_id,
                     hash: Some(hash),
                     node_id: own_id,
                     path: path.clone(),
@@ -352,12 +361,12 @@ impl AppRaftStorage {
                 Ok(String::new())
             }
             FileCommitFail {
-                serial,
+                request_id,
                 failure_reason,
             } => todo!(),
 
             FileCommitSuccess {
-                serial,
+                request_id,
                 hash,
                 node_id,
                 path,
@@ -458,22 +467,25 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     ) -> Result<AppClientResponse> {
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
         // so we don't apply the entry twice.
-        if let Some(LastAppliedEntry { id, contents }) =
-            LastAppliedEntries::get(db_conn!(), data.client).await?
+        if let Some(LastAppliedEntry {
+            index,
+            contents,
+            request_id,
+        }) = LastAppliedEntries::get(db_conn!(), data.client).await?
         {
-            if id == data.serial {
+            if request_id == data.id {
                 return Ok(contents);
             }
         }
 
         let mut tx = db().begin().await?;
         let response = match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, *index).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, *index).await,
+            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, data.id).await,
+            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, data.id).await,
         };
         let response = AppClientResponse(response);
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
-        LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
+        LastAppliedEntries::set(&mut tx, data.client, *index, data.id, &response).await?;
         tx.commit().await?;
         Ok(response)
     }
@@ -489,33 +501,25 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             let is_last_entry = entries.peek().is_none();
             last_entry_id = is_last_entry.then_some(id);
 
-            // See if this entry has already been applied, and if so, don't apply it again.
-            if let Some(LastAppliedEntry { id, .. }) =
+            // If this node has already applied this entry to its state machine before, return the recorded response as-is
+            // so we don't apply the entry twice.
+            if let Some(LastAppliedEntry { request_id, .. }) =
                 LastAppliedEntries::get(db_conn!(), data.client).await?
             {
-                if id == data.serial {
+                if request_id == data.id {
                     continue;
                 }
             }
 
             let response = match &data.operation {
                 Operation::FromClient(op) => {
-                    self.handle_client_operation(op, &mut tx, data.serial).await
+                    self.handle_client_operation(op, &mut tx, data.id).await
                 }
-                Operation::FromNode(op) => {
-                    self.handle_node_operation(op, &mut tx, data.serial).await
-                }
+                Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, data.id).await,
             };
-            //     Operation::FromClient(op) => {
-            //         self.handle_client_operation(data.serial, op, &mut tx).await
-            //     }
-            //     Operation::FromNode(op) => {
-            //         self.handle_node_operation(data.serial, op, &mut tx).await
-            //     }
-            // };
             let response = AppClientResponse(response);
             // Save the response to applying this entry, but don't return it
-            LastAppliedEntries::set(&mut tx, data.client, id, &response).await?;
+            LastAppliedEntries::set(&mut tx, data.client, id, data.id, &response).await?;
         }
 
         // The last operation's id will be committed to the `snapshot_meta` table as the last one applied

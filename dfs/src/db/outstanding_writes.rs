@@ -3,13 +3,16 @@ use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Error, SqliteConnection};
 
-use crate::client_req::RequestSerial;
+use crate::client_req::RequestId;
 
-use super::schema::{Schema, SqlxQuery};
+use super::{
+    errors::raftlog_deserialize_error,
+    schema::{Schema, SqlxQuery},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutstandingWriteRow {
-    pub serial: RequestSerial,
+    pub request_id: RequestId,
     pub file_path: Utf8PathBuf,
     pub node_id: i64,
 }
@@ -18,13 +21,10 @@ pub struct OutstandingWrites;
 
 impl OutstandingWrites {
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<OutstandingWriteRow>> {
-        let res = query!("SELECT serial, file_path, node_id FROM outstanding_writes")
+        let res = query!("SELECT request_id, file_path, node_id FROM outstanding_writes")
             .try_map(|r| {
                 Ok(OutstandingWriteRow {
-                    serial: {
-                        let val: i64 = r.serial;
-                        u64::try_from(val).map_err(|e| Error::Decode(Box::new(e)))?
-                    },
+                    request_id: r.request_id.try_into().unwrap(), // <-- TODO this is an anyhow error but try_map wants a database error
                     file_path: Utf8PathBuf::from(r.file_path),
                     node_id: r.node_id,
                 })

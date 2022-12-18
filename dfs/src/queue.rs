@@ -11,7 +11,7 @@ use tokio::sync::{
     OwnedRwLockWriteGuard, RwLock,
 };
 
-use crate::client_req::RequestSerial;
+use crate::client_req::RequestId;
 
 /// A read handle to a file in the queue.
 // Either::Left means that we own a plain lock read in the queue.
@@ -47,7 +47,7 @@ impl Drop for QueueWriteHandle {
 #[derive(Debug, Default)]
 struct QueueItem {
     lock: Arc<RwLock<()>>,
-    waiters: HashMap<RequestSerial, broadcast::Sender<()>>,
+    waiters: HashMap<RequestId, broadcast::Sender<()>>,
 }
 
 #[derive(Debug)]
@@ -68,12 +68,12 @@ impl Queue {
     }
 
     // REVIEW: should this only be called on success?
-    /// Mark the write command `serial` as finished.
-    pub async fn write_committed(&self, path: &Utf8Path, serial: RequestSerial) -> Result<()> {
+    /// Mark the write command with ID `req_id` as finished.
+    pub async fn write_committed(&self, path: &Utf8Path, req_id: RequestId) -> Result<()> {
         let mut items = self.items.lock().await;
 
         if let Some(item) = items.get_mut(path) {
-            if let Some(waiter) = item.waiters.remove(&serial) {
+            if let Some(waiter) = item.waiters.remove(&req_id) {
                 waiter.send(())?;
             }
         }
@@ -86,13 +86,13 @@ impl Queue {
 
     // TODO: also place write job in the `outstanding_writes` table.
 
-    /// Submit and hold a write lock for the file at `path` for write command `serial`.
+    /// Submit and hold a write lock for the file at `path` for write command with ID `req_id`.
     /// This function will wait until a write lock is acquired.
     /// Write lock will be held until the write completes AND the resulint QueueHandle is dropped.
     pub async fn write(
         self: Arc<Self>,
         path: Utf8PathBuf,
-        serial: Option<RequestSerial>,
+        req_id: Option<RequestId>,
     ) -> Result<QueueWriteHandle> {
         // channel to indicate that the caller of `get_write` is finished with the lock.
         let (htx, hrx) = oneshot::channel();
@@ -109,7 +109,7 @@ impl Queue {
                 let mut entry = this.entry(path).await;
 
                 // channel to indicate that the write operation has been completed
-                let orx = serial.map(|serial| match entry.waiters.entry(serial) {
+                let orx = req_id.map(|req_id| match entry.waiters.entry(req_id) {
                     Entry::Vacant(v) => {
                         let (otx, orx) = broadcast::channel(1);
                         v.insert(otx);
@@ -135,7 +135,7 @@ impl Queue {
 
             // And finally drop it.
             // This means that we will hold the write lock until both the caller of `get_write` is
-            // done and the write operation `serial` is comitted.
+            // done and the write operation with ID `req_id` is comitted.
             drop(write_lock);
         });
 
