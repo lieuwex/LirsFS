@@ -137,6 +137,7 @@ async fn main() {
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
         Config::build(CONFIG.cluster_name.clone())
+            .heartbeat_interval(300)
             .validate()
             .expect("Failed to build Raft config"),
     );
