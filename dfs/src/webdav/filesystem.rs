@@ -102,6 +102,7 @@ where
 }
 
 impl DavFileSystem for WebdavFilesystem {
+    #[tracing::instrument(level = "trace", skip(self))]
     fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
         let path = path.clone();
         do_fs(move || async move {
@@ -111,6 +112,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn read_dir<'a>(
         &'a self,
         path: &'a DavPath,
@@ -133,6 +135,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
         let path = davpath_to_pathbuf(path);
 
@@ -144,6 +147,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn create_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -156,6 +160,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn remove_dir<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let stream = self.read_dir(path, ReadDirMeta::None).await?;
@@ -185,6 +190,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn remove_file<'a>(&'a self, path: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -197,6 +203,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn rename<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -210,6 +217,7 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn copy<'a>(&'a self, from: &'a DavPath, to: &'a DavPath) -> FsFuture<()> {
         do_fs(move || async move {
             let raft = RAFT.get().unwrap();
@@ -223,10 +231,12 @@ impl DavFileSystem for WebdavFilesystem {
         })
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_accessed<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
         todo!()
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_modified<'a>(&'a self, path: &'a DavPath, tm: SystemTime) -> FsFuture<()> {
         todo!()
     }

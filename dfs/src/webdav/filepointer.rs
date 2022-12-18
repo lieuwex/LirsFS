@@ -32,6 +32,7 @@ impl FilePointer {
         SeekFrom::Start(self.pos)
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn _seek(&mut self, pos: SeekFrom) -> Result<u64, FsError> {
         let add = |a: u64, b: i64| -> Result<u64, FsError> {
             a.checked_add_signed(b).ok_or(FsError::GeneralFailure)
@@ -84,10 +85,12 @@ where
 }
 
 impl DavFile for FilePointer {
+    #[tracing::instrument(level = "trace")]
     fn metadata<'a>(&'a mut self) -> FsFuture<Box<dyn DavMetaData>> {
         self.fs.metadata(&self.file_path)
     }
 
+    #[tracing::instrument(level = "trace", skip(buf))]
     fn write_buf<'a>(&'a mut self, buf: Box<dyn bytes::Buf + Send>) -> FsFuture<()> {
         let bytes = buf.chunk().to_vec();
         do_op(move || async move {
@@ -104,6 +107,7 @@ impl DavFile for FilePointer {
         })
     }
 
+    #[tracing::instrument(level = "trace")]
     fn write_bytes<'a>(&'a mut self, buf: bytes::Bytes) -> FsFuture<()> {
         do_op(move || async move {
             let path = davpath_to_pathbuf(&self.file_path);
@@ -121,6 +125,7 @@ impl DavFile for FilePointer {
         })
     }
 
+    #[tracing::instrument(level = "trace")]
     fn read_bytes<'a>(&'a mut self, count: usize) -> FsFuture<bytes::Bytes> {
         do_file(self, move |client, fp| async move {
             let path = davpath_to_pathbuf(&fp.file_path);
@@ -131,11 +136,13 @@ impl DavFile for FilePointer {
         })
     }
 
+    #[tracing::instrument(level = "trace")]
     fn seek<'a>(&'a mut self, pos: std::io::SeekFrom) -> FsFuture<u64> {
         let pos: SeekFrom = pos.into();
         Box::pin(self._seek(pos))
     }
 
+    #[tracing::instrument(level = "trace")]
     fn flush<'a>(&'a mut self) -> FsFuture<()> {
         // TODO: NOOP
         Box::pin(future::ready(Ok(())))

@@ -165,7 +165,7 @@ impl AppRaftStorage {
                     }
 
                     if am_keeper {
-                        FILE_SYSTEM.create_file(&lock, path).await?;
+                        FILE_SYSTEM.create_file(&lock, &path).await?;
                     }
 
                     tx.commit().await?;
