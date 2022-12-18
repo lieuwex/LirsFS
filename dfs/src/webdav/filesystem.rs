@@ -54,7 +54,7 @@ impl WebdavFilesystem {
                 .map(|&n| {
                     Box::pin(async move {
                         // TODO: improve error handling
-                        let cl = assume_client!(n);
+                        let (_, cl) = assume_client!(n);
                         Ok((n, cl))
                     })
                 })

@@ -46,9 +46,9 @@ macro_rules! assume_client {
 
         let fut = node.get_client();
         if let Some(timeout) = $timeout {
-            tokio::time::timeout(timeout, fut).await?
+            (node, tokio::time::timeout(timeout, fut).await?)
         } else {
-            fut.await
+            (node, fut.await)
         }
     }};
 
@@ -71,8 +71,14 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         target: NodeId,
         rpc: AppendEntriesRequest<AppClientRequest>,
     ) -> Result<AppendEntriesResponse> {
-        let client = assume_client!(self, target, None);
-        Ok(client.append_entries(context::current(), rpc).await?)
+        let (node, client) = assume_client!(self, target, None);
+        match client.append_entries(context::current(), rpc).await {
+            Err(e) => {
+                node.mark_dead().await;
+                Err(e.into())
+            }
+            Ok(r) => Ok(r),
+        }
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
