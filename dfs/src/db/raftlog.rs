@@ -331,7 +331,7 @@ impl From<&Entry<AppClientRequest>> for RaftLogRow {
         Self {
             id: entry.index,
             term: entry.term,
-            entry: bincode::serialize(&entry).unwrap_or_else(|err| {
+            entry: bincode::serialize(&entry.payload).unwrap_or_else(|err| {
                 panic!("Error serializing log entry {:#?}: {:?}", entry, err)
             }),
             entry_type: RaftLogEntryType::from(&entry.payload),
