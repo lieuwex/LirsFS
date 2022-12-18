@@ -1,8 +1,7 @@
-use anyhow::Result;
 use async_raft::{
     raft::{
-        AppendEntriesRequest, AppendEntriesResponse, ClientWriteResponse, InstallSnapshotRequest,
-        InstallSnapshotResponse, VoteRequest, VoteResponse,
+        AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
+        InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
     NodeId,
 };
