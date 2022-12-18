@@ -467,22 +467,25 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
     ) -> Result<AppClientResponse> {
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
         // so we don't apply the entry twice.
-        if let Some(LastAppliedEntry { id, contents }) =
-            LastAppliedEntries::get(db_conn!(), data.client).await?
+        if let Some(LastAppliedEntry {
+            index,
+            contents,
+            request_id,
+        }) = LastAppliedEntries::get(db_conn!(), data.client).await?
         {
-            if id == data.id {
+            if request_id == data.id {
                 return Ok(contents);
             }
         }
 
         let mut tx = db().begin().await?;
         let response = match &data.operation {
-            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, *index).await,
-            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, *index).await,
+            Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, data.id).await,
+            Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, data.id).await,
         };
         let response = AppClientResponse(response);
         SnapshotMeta::set_last_applied_entry(&mut tx, *index).await?;
-        LastAppliedEntries::set(&mut tx, data.client, *index, &response).await?;
+        LastAppliedEntries::set(&mut tx, data.client, *index, data.id, &response).await?;
         tx.commit().await?;
         Ok(response)
     }
@@ -498,11 +501,12 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
             let is_last_entry = entries.peek().is_none();
             last_entry_id = is_last_entry.then_some(id);
 
-            // See if this entry has already been applied, and if so, don't apply it again.
-            if let Some(LastAppliedEntry { id, .. }) =
+            // If this node has already applied this entry to its state machine before, return the recorded response as-is
+            // so we don't apply the entry twice.
+            if let Some(LastAppliedEntry { request_id, .. }) =
                 LastAppliedEntries::get(db_conn!(), data.client).await?
             {
-                if id == data.id {
+                if request_id == data.id {
                     continue;
                 }
             }
@@ -513,16 +517,9 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
                 }
                 Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, data.id).await,
             };
-            //     Operation::FromClient(op) => {
-            //         self.handle_client_operation(data.request_id, op, &mut tx).await
-            //     }
-            //     Operation::FromNode(op) => {
-            //         self.handle_node_operation(data.request_id, op, &mut tx).await
-            //     }
-            // };
             let response = AppClientResponse(response);
             // Save the response to applying this entry, but don't return it
-            LastAppliedEntries::set(&mut tx, data.client, id, &response).await?;
+            LastAppliedEntries::set(&mut tx, data.client, id, data.id, &response).await?;
         }
 
         // The last operation's id will be committed to the `snapshot_meta` table as the last one applied

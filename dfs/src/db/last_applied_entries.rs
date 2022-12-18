@@ -3,7 +3,7 @@ use async_raft::NodeId;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, SqliteConnection};
 
-use crate::client_res::AppClientResponse;
+use crate::{client_req::RequestId, client_res::AppClientResponse};
 
 use super::{
     errors::raftlog_deserialize_error,
@@ -13,7 +13,8 @@ use super::{
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LastAppliedEntry {
-    pub id: RaftLogId,
+    pub index: RaftLogId,
+    pub request_id: RequestId,
     pub contents: AppClientResponse,
 }
 
@@ -37,8 +38,9 @@ impl LastAppliedEntries {
         .await?
         .map(|record| {
             Ok(LastAppliedEntry {
-                id: record.last_entry_id as RaftLogId,
-                contents: bincode::deserialize(&record.last_entry_contents)
+                request_id: record.request_id.try_into()?,
+                index: record.log_index as RaftLogId,
+                contents: bincode::deserialize(&record.contents)
                     .map_err(raftlog_deserialize_error)?,
             })
         })
@@ -48,19 +50,22 @@ impl LastAppliedEntries {
     pub async fn set(
         conn: &mut SqliteConnection,
         node_id: NodeId,
-        entry_id: RaftLogId,
+        entry_index: RaftLogId,
+        request_id: RequestId,
         contents: &AppClientResponse,
     ) -> Result<()> {
         let node_id = node_id as i64;
-        let entry_id = entry_id as i64;
+        let request_id = request_id.0.as_bytes().as_slice();
+        let entry_index = entry_index as i64;
         let contents_serialized = bincode::serialize(contents)?;
         query!(
             "
-            INSERT INTO last_applied_entries (node_id, last_entry_id, last_entry_contents)
-            VALUES(?, ?, ?)
+            INSERT INTO last_applied_entries (node_id, log_index, request_id, contents)
+            VALUES(?, ?, ?, ?)
         ",
             node_id,
-            entry_id,
+            entry_index,
+            request_id,
             contents_serialized
         )
         .execute(conn)

@@ -5,7 +5,10 @@ use sqlx::{query, Error, SqliteConnection};
 
 use crate::client_req::RequestId;
 
-use super::schema::{Schema, SqlxQuery};
+use super::{
+    errors::raftlog_deserialize_error,
+    schema::{Schema, SqlxQuery},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutstandingWriteRow {
@@ -21,7 +24,7 @@ impl OutstandingWrites {
         let res = query!("SELECT request_id, file_path, node_id FROM outstanding_writes")
             .try_map(|r| {
                 Ok(OutstandingWriteRow {
-                    request_id: r.serial,
+                    request_id: r.request_id.try_into().unwrap(), // <-- TODO this is an anyhow error but try_map wants a database error
                     file_path: Utf8PathBuf::from(r.file_path),
                     node_id: r.node_id,
                 })
