@@ -16,7 +16,8 @@ where
 }
 
 /// Prepend [Config]'s `fs_dir` to `file_path`, creating an absolute path to the file on any node in the filesystem.
-pub fn prepend_fs_dir(file_path: &Utf8Path) -> Utf8PathBuf {
+pub fn prepend_fs_dir(file_path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
+    let file_path = file_path.as_ref();
     // TODO: similar for non-unix platforms.
     let file_path = if file_path.starts_with("/") {
         file_path.strip_prefix("/").unwrap()

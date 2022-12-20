@@ -15,8 +15,7 @@ use crate::{
     db_conn,
     operation::{ClientToNodeOperation, NodeToNodeOperation, Operation},
     queue::Queue,
-    rsync::Rsync,
-    util, CONFIG, FILE_SYSTEM, RAFT,
+    rsync, util, CONFIG, FILE_SYSTEM, NETWORK, RAFT,
 };
 use std::{
     fmt::Display,
@@ -38,6 +37,7 @@ use chrono::offset::Utc;
 use chrono::DateTime;
 use futures::prelude::*;
 use sqlx::{query, Connection, SqliteConnection};
+use tarpc::context::Context;
 use thiserror::Error;
 use tokio::fs::OpenOptions;
 use tracing::trace;
@@ -323,17 +323,22 @@ impl AppRaftStorage {
                 // this operation has been applied to the state machine successfully, but an error occurred outside of Raft.
                 .ok_or_else(|| anyhow!("No active keeper found for file {:#?}. This probably means the file has been lost.", path))?;
 
-                if let Err(err) = Rsync::copy_from(keeper, path).await {
+                let (_, client) = assume_client!(keeper);
+
+                if let Err(err) = client
+                    .copy_file_to(Context::current(), keeper, path.clone())
+                    .await?
+                {
                     raft.client_write(FileCommitFail {
                         request_id,
                         failure_reason: format!(
-                            "Could not `rsync` file {} from node {}",
+                            "Could not `rsync` file {} from node {}. Node returned error: {err}",
                             path, keeper
                         ),
                     })
                     .await?;
-                    return Err(err.into());
-                };
+                    return Err(anyhow!("{err}").into());
+                }
 
                 let fs_lock = self.get_queue().read(path.clone()).await;
                 let hash = match FILE_SYSTEM.get_hash(&fs_lock, path).await {

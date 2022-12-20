@@ -1,6 +1,9 @@
-use async_raft::raft::{
-    AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
-    InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
+use async_raft::{
+    raft::{
+        AppendEntriesRequest, AppendEntriesResponse, ClientWriteRequest, ClientWriteResponse,
+        InstallSnapshotRequest, InstallSnapshotResponse, VoteRequest, VoteResponse,
+    },
+    NodeId,
 };
 use camino::Utf8PathBuf;
 
@@ -26,4 +29,7 @@ pub trait Service {
     /* Filesystem operations */
     async fn read_dir(path: Utf8PathBuf) -> Vec<DirEntry>;
     async fn read_bytes(path: Utf8PathBuf, pos: SeekFrom, count: usize) -> Vec<u8>;
+
+    /* Request from a different node to copy this file over */
+    async fn copy_file_to(target: NodeId, path: Utf8PathBuf) -> Result<(), String>;
 }
