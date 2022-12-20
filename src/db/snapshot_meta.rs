@@ -56,7 +56,7 @@ impl SnapshotMeta {
         )
         .execute(conn)
         .await?;
-        assert_eq!(res.rows_affected(), 1);
+        assert!(res.rows_affected() <= 1);
 
         Ok(())
     }
