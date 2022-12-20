@@ -101,9 +101,26 @@ macro_rules! notimplemented_fut {
 
 impl DavFileSystem for WebdavFilesystem {
     #[tracing::instrument(level = "trace", skip(self))]
-    fn open<'a>(&'a self, path: &'a DavPath, _: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
+    fn open<'a>(&'a self, path: &'a DavPath, options: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
         let path = path.clone();
         do_fs(move || async move {
+            if options.create || options.create_new {
+                let path = davpath_to_pathbuf(&path);
+
+                if options.create_new {
+                    let f = File::get_by_path(db_conn!(), &path).await?;
+                    ensure!(f.is_none(), "file already exists");
+                }
+
+                let raft = RAFT.get().unwrap();
+                raft.client_write(ClientToNodeOperation::CreateFile {
+                    path,
+                    replication_factor: 0,
+                    initial_keepers: vec![],
+                })
+                .await?;
+            }
+
             let res = FilePointer::new(path);
             let res: Box<dyn DavFile> = Box::new(res);
             Ok(res)
