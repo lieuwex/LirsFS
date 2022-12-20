@@ -17,6 +17,7 @@ use crate::{
     db::{
         db,
         file::{File, FileRow},
+        keepers::Keepers,
     },
     db_conn,
     operation::ClientToNodeOperation,
@@ -31,18 +32,8 @@ pub struct WebdavFilesystem {}
 
 impl WebdavFilesystem {
     async fn get_keeper_nodes(&self, path: &DavPath) -> Result<Vec<NodeId>> {
-        // TODO: this is currently just a toy example, work this out for real.
-
-        let p = path.as_rel_ospath();
-        let res = if p.starts_with("a") {
-            vec![0]
-        } else if p.starts_with("b") {
-            vec![1]
-        } else if p.starts_with("c") {
-            vec![2]
-        } else {
-            vec![]
-        };
+        let path = davpath_to_pathbuf(path);
+        let res = Keepers::get_keeper_ids_for_file(db_conn!(), &path).await?;
         Ok(res)
     }
 
