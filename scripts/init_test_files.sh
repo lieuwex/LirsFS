@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 
-rm -rfv ./dfs/data/
-rm -rfv ./dfs/logs/
-rm -fv ./dfs/config*.toml
+rm -rfv ./data/
+rm -rfv ./logs/
+rm -fv ./config*.toml
 
 nodes=$(seq 0 2)
 
 for node in $nodes; do
-	mkdir -p "./dfs/data/$node/files/"
-	mkdir -p "./dfs/data/$node/db/"
+	mkdir -p "./data/$node/files/"
+	mkdir -p "./data/$node/db/"
 
 	ls ./dfs/sql/*.sql | while read file; do
-		sqlite3 "./dfs/data/$node/db/db.db" < $file
+		sqlite3 "./data/$node/db/db.db" < $file
 	done
 
-	cat <<EOF > "./dfs/config$node.toml"
+	cat <<EOF > "./config$node.toml"
 cluster_name = "test"
 node_id = $node
 webdav_addr = "[::]:8080"
@@ -28,7 +28,7 @@ hardstate_file = "./data/$node/db/raft_hardstate"
 EOF
 
 	for j in $nodes; do
-		cat <<EOF >> "./dfs/config$node.toml"
+		cat <<EOF >> "./config$node.toml"
 
 [[nodes]]
 id = $j
