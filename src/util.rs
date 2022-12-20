@@ -16,8 +16,8 @@ where
 }
 
 /// Prepend [Config]'s `fs_dir` to `file_path`, creating an absolute path to the file on any node in the filesystem.
-pub fn prepend_fs_dir(file_path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
-    let file_path = file_path.as_ref();
+#[tracing::instrument(level = "debug", ret)]
+pub fn prepend_fs_dir(file_path: &Utf8Path) -> Utf8PathBuf {
     // TODO: similar for non-unix platforms.
     let file_path = if file_path.starts_with("/") {
         file_path.strip_prefix("/").unwrap()
@@ -30,6 +30,7 @@ pub fn prepend_fs_dir(file_path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
     full_path
 }
 
+#[tracing::instrument(level = "debug", ret)]
 pub fn blob_to_hash(hash: &[u8]) -> Result<FileContentHash> {
     if hash.len() != 8 {
         bail!(
@@ -43,6 +44,7 @@ pub fn blob_to_hash(hash: &[u8]) -> Result<FileContentHash> {
     Ok(FileContentHash::from_be_bytes(bytes))
 }
 
+#[tracing::instrument(level = "debug", ret)]
 pub fn davpath_to_pathbuf(path: &DavPath) -> Utf8PathBuf {
     Utf8PathBuf::from_path_buf(path.as_pathbuf()).unwrap()
 }

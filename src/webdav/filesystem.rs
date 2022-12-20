@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Ok, Result};
 use async_raft::NodeId;
 use futures::prelude::*;
-use std::time::SystemTime;
+use hyper::StatusCode;
+use std::{pin::Pin, time::SystemTime};
 use tracing::error;
 use webdav_handler::{
     davpath::DavPath,
@@ -102,6 +103,12 @@ where
         let (node, client) = fs.assume_keeper(path).await?;
         f(node, client, path).await.map_err(|e| e.into())
     })
+}
+
+macro_rules! notimplemented_fut {
+    ($method:expr) => {
+        Box::pin(future::ready(Err(FsError::NotImplemented)))
+    };
 }
 
 impl DavFileSystem for WebdavFilesystem {
@@ -257,19 +264,40 @@ impl DavFileSystem for WebdavFilesystem {
         todo!()
     }
 
-    /*
+    #[tracing::instrument(level = "trace", skip(self))]
+    #[allow(unused_variables)]
     fn have_props<'a>(
         &'a self,
         path: &'a DavPath,
-    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
-    fn get_props<'a>(&'a self, path: &'a DavPath, do_content: bool) -> FsFuture<Vec<DavProp>>;
-    fn get_prop<'a>(&'a self, path: &'a DavPath, prop: DavProp) -> FsFuture<Vec<u8>>;
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        Box::pin(future::ready(false))
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    #[allow(unused_variables)]
     fn patch_props<'a>(
         &'a self,
         path: &'a DavPath,
         patch: Vec<(bool, DavProp)>,
-    ) -> FsFuture<Vec<(StatusCode, DavProp)>>;
-    */
+    ) -> FsFuture<Vec<(StatusCode, DavProp)>> {
+        notimplemented_fut!("patch_props")
+    }
 
-    //fn get_quota<'a>(&'a self) -> FsFuture<(u64, Option<u64>)>;
+    #[tracing::instrument(level = "trace", skip(self))]
+    #[allow(unused_variables)]
+    fn get_props<'a>(&'a self, path: &'a DavPath, do_content: bool) -> FsFuture<Vec<DavProp>> {
+        notimplemented_fut!("get_props")
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    #[allow(unused_variables)]
+    fn get_prop<'a>(&'a self, path: &'a DavPath, prop: DavProp) -> FsFuture<Vec<u8>> {
+        notimplemented_fut!("get_prop`")
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    #[allow(unused_variables)]
+    fn get_quota<'a>(&'a self) -> FsFuture<(u64, Option<u64>)> {
+        notimplemented_fut!("get_quota`")
+    }
 }
