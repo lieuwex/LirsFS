@@ -10,7 +10,7 @@ for node in $nodes; do
 	mkdir -p "./data/$node/files/"
 	mkdir -p "./data/$node/db/"
 
-	ls ./dfs/sql/*.sql | while read file; do
+	ls ./sql/*.sql | while read file; do
 		sqlite3 "./data/$node/db/db.db" < $file
 	done
 
