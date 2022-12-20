@@ -139,7 +139,9 @@ async fn main() {
     // RaftNetwork & RaftStorage impls.
     let raft_config = Arc::new(
         Config::build(CONFIG.cluster_name.clone())
-            .heartbeat_interval(if CONFIG.slowdown { 5000 } else { 50 })
+            .election_timeout_min(if CONFIG.slowdown { 150 * 100 } else { 150 })
+            .election_timeout_max(if CONFIG.slowdown { 300 * 100 } else { 300 })
+            .heartbeat_interval(if CONFIG.slowdown { 50 * 100 } else { 50 })
             .validate()
             .expect("Failed to build Raft config"),
     );
