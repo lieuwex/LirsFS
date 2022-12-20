@@ -40,8 +40,6 @@ checksum = "216261ddc8289130e551ddcd5ce8a064710c0d064a4d2895c67151c92b5443f6"
 [[package]]
 name = "async-raft"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "777696e73bfd7ab8ca5e94ef712985eee1a342aeaa6f3078d6946cd92ec4acc3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -166,10 +164,6 @@ dependencies = [
  "wasm-bindgen",
  "winapi",
 ]
-
-[[package]]
-name = "client"
-version = "0.1.0"
 
 [[package]]
 name = "codespan-reporting"

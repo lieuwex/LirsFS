@@ -66,6 +66,11 @@ pub struct Config {
     pub webdav_addr: SocketAddr,
     pub nodes: Vec<Node>,
 
+    /// slowdown slows down Raft heartbeat and connection live checking. This can be useful to have
+    /// less log spam while debugging.
+    #[serde(default)]
+    pub slowdown: bool,
+
     #[serde(default = "default_file_dir")]
     pub file_dir: Utf8PathBuf,
 
