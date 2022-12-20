@@ -9,7 +9,7 @@ use webdav_handler::{
     fs::{DavFile, DavFileSystem, DavMetaData, FsError, FsFuture},
 };
 
-use super::{Client, SeekFrom, WebdavFilesystem};
+use super::{error::FileSystemError, Client, SeekFrom, WebdavFilesystem};
 use crate::{operation::ClientToNodeOperation, util::davpath_to_pathbuf, RAFT, STORAGE, WEBDAV_FS};
 
 #[derive(Debug, Clone)]
@@ -56,18 +56,15 @@ fn do_op<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
 where
     Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
-    ERR: Into<anyhow::Error>,
+    ERR: Into<FileSystemError>,
 {
     Box::pin(async move {
         let res = async {
             let res = f().await.map_err(|e| e.into())?;
-            anyhow::Ok(res)
+            std::result::Result::Ok::<_, FileSystemError>(res)
         }
         .await
-        .map_err(|e| {
-            error!("Catched webdav filesystem error: {:?}", e);
-            FsError::GeneralFailure
-        })?;
+        .map_err(|e| FsError::from(e))?;
         Ok(res)
     })
 }
@@ -76,7 +73,7 @@ fn do_file<'a, Fun, FunRet, OK, ERR>(fp: &'a FilePointer, f: Fun) -> FsFuture<'a
 where
     Fun: (FnOnce(Client, &'a FilePointer) -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
-    ERR: Into<anyhow::Error>,
+    ERR: Into<FileSystemError>,
 {
     do_op(move || async move {
         let (_, client) = fp.fs.assume_keeper(&fp.file_path).await?;

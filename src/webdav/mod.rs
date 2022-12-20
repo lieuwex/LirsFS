@@ -5,6 +5,7 @@ pub use metadata::*;
 pub use seekfrom::*;
 
 mod direntry;
+mod error;
 mod filepointer;
 mod filesystem;
 mod fspointer;

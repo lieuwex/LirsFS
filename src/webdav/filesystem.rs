@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, ensure, Ok, Result};
 use async_raft::NodeId;
 use futures::prelude::*;
 use hyper::StatusCode;
@@ -7,8 +7,8 @@ use tracing::error;
 use webdav_handler::{
     davpath::DavPath,
     fs::{
-        DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsError, FsFuture, FsStream, OpenOptions,
-        ReadDirMeta,
+        DavDirEntry, DavFile, DavFileSystem, DavMetaData, DavProp, FsError, FsFuture, FsStream,
+        OpenOptions, ReadDirMeta,
     },
 };
 
@@ -24,7 +24,7 @@ use crate::{
     NETWORK, RAFT,
 };
 
-use super::{Client, FilePointer};
+use super::{error::FileSystemError, Client, FilePointer};
 
 #[derive(Debug, Clone)]
 pub struct WebdavFilesystem {}
@@ -56,7 +56,7 @@ impl WebdavFilesystem {
                     Box::pin(async move {
                         // TODO: improve error handling
                         let (_, cl) = assume_client!(n);
-                        Ok((n, cl))
+                        anyhow::Ok((n, cl))
                     })
                 })
                 .map(|c| c.into_stream().filter_map(|c| future::ready(c.ok()))),
@@ -73,18 +73,15 @@ fn do_fs<'a, Fun, FunRet, OK, ERR>(f: Fun) -> FsFuture<'a, OK>
 where
     Fun: (FnOnce() -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
-    ERR: Into<anyhow::Error>,
+    ERR: Into<FileSystemError>,
 {
     Box::pin(async move {
         let res = async move {
             let res = f().await.map_err(|e| e.into())?;
-            Ok(res)
+            std::result::Result::Ok::<_, FileSystemError>(res)
         }
         .await
-        .map_err(|e| {
-            error!("Catched webdav filesystem error: {:?}", e);
-            FsError::GeneralFailure
-        })?;
+        .map_err(|e| FsError::from(e))?;
         std::result::Result::Ok(res)
     })
 }
@@ -97,7 +94,7 @@ fn do_fs_file<'a, Fun, FunRet, OK, ERR>(
 where
     Fun: (FnOnce(NodeId, Client, &'a DavPath) -> FunRet) + Send + 'a,
     FunRet: Future<Output = Result<OK, ERR>> + Send,
-    ERR: Into<anyhow::Error>,
+    ERR: Into<FileSystemError>,
 {
     do_fs(move || async move {
         let (node, client) = fs.assume_keeper(path).await?;
@@ -162,7 +159,7 @@ impl DavFileSystem for WebdavFilesystem {
                 }
             } else {
                 let file = File::get_by_path(db_conn!(), &path).await?;
-                file.ok_or_else(|| anyhow!("file not found"))?
+                file.ok_or_else(|| FsError::NotFound)?
             };
 
             let res: Box<dyn DavMetaData> = Box::new(file);
