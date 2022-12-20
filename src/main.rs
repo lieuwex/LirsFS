@@ -72,9 +72,11 @@ async fn run_app(raft: RaftApp) -> () {
 
     let mut metrics = raft.app.metrics().clone();
     loop {
-        metrics.changed().await.expect("raft shut down");
-        let m = metrics.borrow();
-        let am_leader = m.current_leader == Some(m.id);
+        let am_leader = {
+            metrics.changed().await.expect("raft shut down");
+            let m = metrics.borrow();
+            m.current_leader == Some(m.id)
+        };
 
         trace!(
             raft = debug(&raft),

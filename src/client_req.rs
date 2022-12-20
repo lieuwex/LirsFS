@@ -38,10 +38,10 @@ impl AppClientRequest {
     pub fn new<O: Into<Operation>>(operation: O) -> Self {
         let raft = &RAFT.get().unwrap().app;
         let metrics = raft.metrics();
-        let metrics = metrics.borrow();
+        let client = metrics.borrow().id;
 
         Self {
-            client: metrics.id,
+            client,
             id: RequestId(Uuid::new_v4()),
 
             operation: operation.into(),
