@@ -193,7 +193,8 @@ impl NodeConnection {
     }
 
     #[tracing::instrument(level = "error")]
-    pub async fn mark_dead(&self) {
+    pub async fn mark_dead(&self, error: &anyhow::Error) {
+        error!(?error, "marking connection as dead, reason: {:?}", error);
         self.dead.store(true, Ordering::Relaxed);
     }
 

@@ -74,8 +74,9 @@ impl AppRaftNetwork {
         let (node, client) = assume_client!(self, target, None);
         match client.client_write(context::current(), rpc).await {
             Err(e) => {
-                node.mark_dead().await;
-                Err(e.into())
+                let e = e.into();
+                node.mark_dead(&e).await;
+                Err(e)
             }
             Ok(r) => anyhow::Ok(r),
         }
@@ -93,8 +94,9 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         let (node, client) = assume_client!(self, target, None);
         match client.append_entries(context::current(), rpc).await {
             Err(e) => {
-                node.mark_dead().await;
-                Err(e.into())
+                let e = e.into();
+                node.mark_dead(&e).await;
+                Err(e)
             }
             Ok(r) => Ok(r),
         }
@@ -109,8 +111,9 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         let (node, client) = assume_client!(self, target, None);
         match client.install_snapshot(context::current(), rpc).await {
             Err(e) => {
-                node.mark_dead().await;
-                Err(e.into())
+                let e = e.into();
+                node.mark_dead(&e).await;
+                Err(e)
             }
             Ok(r) => Ok(r),
         }
@@ -121,8 +124,9 @@ impl RaftNetwork<AppClientRequest> for AppRaftNetwork {
         let (node, client) = assume_client!(self, target, None);
         match client.vote(context::current(), rpc).await {
             Err(e) => {
-                node.mark_dead().await;
-                Err(e.into())
+                let e = e.into();
+                node.mark_dead(&e).await;
+                Err(e)
             }
             Ok(r) => Ok(r),
         }
