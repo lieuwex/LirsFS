@@ -66,7 +66,7 @@ async fn pinger(
     let mut state = ConnectionState::Connecting;
     macro_rules! set_state {
         ($new:expr) => {
-            debug!(old_state = debug(&state), new_state = debug($new));
+            debug!(old_state = ?state, new_state = ?$new);
             state = $new;
             ready.send_replace(state.clone());
         };
