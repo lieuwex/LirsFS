@@ -1,8 +1,12 @@
 [package]
-name = "dfs"
+name = "lirsfs"
 version = "0.1.0"
+authors = ["Sjors Holtrop", "Lieuwe Rooijakkers"]
+license = "MIT"
+license-file = "LICENSE"
 edition = "2021"
 rust-version = "1.66"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htmls
 
