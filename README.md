@@ -8,6 +8,8 @@
 
 Install Rust using e.g. [Rustup](https://rustup.rs/). `LirsFS` requires version >1.66 of Rust.
 
+Compile using `cargo build`.
+
 ## Running
 
 ### Locally
