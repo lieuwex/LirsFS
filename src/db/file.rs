@@ -84,13 +84,12 @@ impl File {
     }
 
     pub async fn get_all(conn: &mut SqliteConnection) -> Result<Vec<FileRow>> {
-        let res: Vec<FileRow> =
-            query("SELECT path, size, hash, replication_factor, is_file FROM files")
-                .map(Self::map_row)
-                .fetch(conn)
-                .map(flatten_result)
-                .try_collect()
-                .await?;
+        let res: Vec<FileRow> = query("SELECT * FROM files")
+            .map(Self::map_row)
+            .fetch(conn)
+            .map(flatten_result)
+            .try_collect()
+            .await?;
         Ok(res)
     }
 
@@ -98,14 +97,12 @@ impl File {
         conn: &mut SqliteConnection,
         path: &Utf8Path,
     ) -> Result<Option<FileRow>> {
-        let res: Option<FileRow> = query(
-            "SELECT path, size, hash, replication_factor, is_file FROM files WHERE path = ?1",
-        )
-        .bind(path.as_str())
-        .map(Self::map_row)
-        .fetch_optional(conn)
-        .await?
-        .transpose()?;
+        let res: Option<FileRow> = query("SELECT * FROM files WHERE path = ?1")
+            .bind(path.as_str())
+            .map(Self::map_row)
+            .fetch_optional(conn)
+            .await?
+            .transpose()?;
         Ok(res)
     }
 
@@ -114,8 +111,10 @@ impl File {
         path: Utf8PathBuf,
         replication_factor: u64,
     ) -> Result<FileRow> {
-        query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, TRUE, 0, ?2)")
+        let now = SystemTime::now();
+        query("INSERT INTO files(path, is_file, size, modified_at, replication_factor) VALUES(?1, TRUE, 0, ?2, ?3)")
             .bind(path.as_str())
+            .bind(now.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64)
             .bind(replication_factor as i64)
             .execute(conn)
             .await?;
@@ -123,7 +122,7 @@ impl File {
         Ok(FileRow {
             file_path: path,
             file_size: 0,
-            modified_at: SystemTime::now(),
+            modified_at: now,
             content_hash: None,
             replication_factor,
             is_file: true,
@@ -131,15 +130,17 @@ impl File {
     }
 
     pub async fn create_dir(conn: &mut SqliteConnection, path: Utf8PathBuf) -> Result<FileRow> {
-        query("INSERT INTO files(path, is_file, size, replication_factor) VALUES(?1, FALSE, 0, 0)")
+        let now = SystemTime::now();
+        query("INSERT INTO files(path, is_file, size, modified_at, replication_factor) VALUES(?1, FALSE, 0, ?2, 0)")
             .bind(path.as_str())
+            .bind(now.duration_since(UNIX_EPOCH).unwrap().as_secs() as i64)
             .execute(conn)
             .await?;
 
         Ok(FileRow {
             file_path: path,
             file_size: 0,
-            modified_at: SystemTime::now(),
+            modified_at: now,
             content_hash: None,
             replication_factor: 0,
             is_file: false,
