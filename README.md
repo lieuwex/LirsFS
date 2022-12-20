@@ -12,7 +12,9 @@ Install Rust using e.g. [Rustup](https://rustup.rs/). `LirsFS` requires version 
 
 ### Locally
 
-The easiest way to run `LirsFS` locally is to use `scripts/init_test_files.sh`. It will generate one configuration per instance, for three instances in total.
+The easiest way to run `LirsFS` locally is to use `scripts/init_test_files.sh`. It will generate one configuration per instance, for three instances in total (this amount can easily be adjusted).
+
+Then in three terminals run `cargo run configX.toml` where X is replaced by {0,1,2} for every terminal.
 
 ### Remotely
 
