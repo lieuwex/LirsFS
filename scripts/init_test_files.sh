@@ -18,6 +18,7 @@ for node in $nodes; do
 cluster_name = "test"
 node_id = $node
 webdav_addr = "[::]:8080"
+slowdown = true
 
 file_dir = "./data/$node/files"
 

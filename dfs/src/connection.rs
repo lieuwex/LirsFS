@@ -94,7 +94,12 @@ async fn pinger(
 
         check_dead!();
         while matches!(state, ConnectionState::Ready) {
-            time::sleep(Duration::from_millis(5)).await;
+            time::sleep(Duration::from_millis(if CONFIG.slowdown {
+                10000
+            } else {
+                5
+            }))
+            .await;
 
             if Instant::now() >= at {
                 break;
