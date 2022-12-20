@@ -1,0 +1,11 @@
+	cluster_name = "test"
+node_id = 0
+listen_port = 2001
+
+[[nodes]]
+id = 0
+addr = "[::]:2001"
+
+# [[nodes]]
+# id = 1
+# addr = "[::]:2002"
