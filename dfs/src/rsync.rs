@@ -5,7 +5,7 @@ use tokio::process::Command;
 
 use crate::{util, CONFIG};
 
-pub async fn copy_to(target_node: NodeId, filename: &Utf8Path) -> Result<()> {
+pub async fn copy_to(target_node: NodeId, filename: impl AsRef<Utf8Path>) -> Result<()> {
     let remote_host = CONFIG.get_node_ssh_host(target_node).ok_or_else(|| {
         anyhow!(
             "Target node with id {:?} not found in config",
