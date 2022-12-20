@@ -60,7 +60,7 @@ impl LastAppliedEntries {
         let contents_serialized = bincode::serialize(contents)?;
         query!(
             "
-            INSERT INTO last_applied_entries (node_id, log_index, request_id, contents)
+            INSERT OR REPLACE INTO last_applied_entries (node_id, log_index, request_id, contents)
             VALUES(?, ?, ?, ?)
         ",
             node_id,

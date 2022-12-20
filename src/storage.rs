@@ -470,20 +470,21 @@ impl RaftStorage<AppClientRequest, AppClientResponse> for AppRaftStorage {
         index: &RaftLogId,
         data: &AppClientRequest,
     ) -> Result<AppClientResponse> {
+        let mut tx = db().begin().await?;
+
         // If this node has already applied this entry to its state machine before, return the recorded response as-is
         // so we don't apply the entry twice.
         if let Some(LastAppliedEntry {
-            index,
+            index: _,
             contents,
             request_id,
-        }) = LastAppliedEntries::get(db_conn!(), data.client).await?
+        }) = LastAppliedEntries::get(&mut tx, data.client).await?
         {
             if request_id == data.id {
                 return Ok(contents);
             }
         }
 
-        let mut tx = db().begin().await?;
         let response = match &data.operation {
             Operation::FromClient(op) => self.handle_client_operation(op, &mut tx, data.id).await,
             Operation::FromNode(op) => self.handle_node_operation(op, &mut tx, data.id).await,
