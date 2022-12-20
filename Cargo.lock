@@ -58,6 +58,7 @@ dependencies = [
 [[package]]
 name = "async-raft"
 version = "0.6.1"
+source = "git+https://github.com/sholtrop/async-raft?rev=ca5db8bf3735025bd7a6f4491c9c2a061322edb5#ca5db8bf3735025bd7a6f4491c9c2a061322edb5"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -8,15 +8,6 @@
 
 Install Rust using e.g. [Rustup](https://rustup.rs/). `LirsFS` requires version >1.66 of Rust.
 
-Initialize the `async-raft` submodule:
-
-```bash
-git submodule init
-git submodule update
-```
-
-This is necessary as we use our own custom fork of [async-raft](https://github.com/async-raft/async-raft).
-
 ## Running
 
 ### Locally

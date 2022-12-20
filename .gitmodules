@@ -1,3 +1,0 @@
-[submodule "async-raft"]
-	path = async-raft
-	url = https://github.com/sholtrop/async-raft

@@ -20,7 +20,7 @@ tracing-appender = "0.2"
 anyhow = { version = "1", features = ["backtrace"] }
 thiserror = "1.0"
 
-async-raft = { path = "./async-raft/async-raft" }
+async-raft = { git = "https://github.com/sholtrop/async-raft", rev = "ca5db8bf3735025bd7a6f4491c9c2a061322edb5" }
 tarpc = { version = "0.29", features = ["full"] }
 
 serde = "1.0"
