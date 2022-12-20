@@ -159,9 +159,6 @@ async fn main() {
     // Get our node's ID from stable storage.
     let node_id = storage.get_own_id();
 
-    // Create a new Raft node, which spawns an async task which
-    // runs the Raft core logic. Keep this Raft instance around
-    // for calling API methods based on events in your app.
     let raft = RaftApp::new(Raft::new(node_id, raft_config, network, storage));
 
     RAFT.set(raft.clone()).unwrap();

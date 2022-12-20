@@ -168,6 +168,7 @@ async fn pinger(
 
 impl NodeConnection {
     /// Create a new connection, this will be initialised directly in the background.
+    #[tracing::instrument(level = "trace", ret)]
     pub fn new(node_id: NodeId, addr: SocketAddr) -> Self {
         let (ready_tx, ready_rx) = watch::channel(ConnectionState::Connecting);
         let dead = Arc::new(AtomicBool::new(false));
@@ -191,11 +192,13 @@ impl NodeConnection {
         }
     }
 
+    #[tracing::instrument(level = "error")]
     pub async fn mark_dead(&self) {
         self.dead.store(true, Ordering::Relaxed);
     }
 
     /// Retrieve a read lock to the client, locks until the client is ready and obtainable.
+    #[tracing::instrument(level = "trace")]
     pub async fn get_client(&self) -> OwnedRwLockReadGuard<Option<ServiceClient>, ServiceClient> {
         loop {
             self.wait_is_ready().await;
@@ -208,11 +211,13 @@ impl NodeConnection {
     }
 
     /// Returns whether or not the client is _currently_ ready to use.
+    #[tracing::instrument(level = "trace", ret)]
     pub fn get_client_state(&self) -> Ref<'_, ConnectionState> {
         self.client_state.borrow()
     }
 
     /// Waits until the client is marked as ready to use.
+    #[tracing::instrument(level = "trace")]
     pub async fn wait_is_ready(&self) {
         let mut rx = self.client_state.clone();
         if *rx.borrow_and_update() == ConnectionState::Ready {
