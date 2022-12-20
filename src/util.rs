@@ -1,5 +1,6 @@
 use crate::{config::Config, filesystem::FileContentHash, CONFIG};
 use anyhow::{anyhow, bail, Result};
+use async_raft::NodeId;
 use camino::{Utf8Path, Utf8PathBuf};
 use webdav_handler::davpath::DavPath;
 
@@ -17,7 +18,7 @@ where
 
 /// Prepend [Config]'s `fs_dir` to `file_path`, creating an absolute path to the file on any node in the filesystem.
 #[tracing::instrument(level = "debug", ret)]
-pub fn prepend_fs_dir(file_path: &Utf8Path) -> Utf8PathBuf {
+pub fn prepend_fs_dir(file_path: &Utf8Path, node_id: Option<NodeId>) -> Result<Utf8PathBuf> {
     // TODO: similar for non-unix platforms.
     let file_path = if file_path.starts_with("/") {
         file_path.strip_prefix("/").unwrap()
@@ -25,9 +26,17 @@ pub fn prepend_fs_dir(file_path: &Utf8Path) -> Utf8PathBuf {
         file_path
     };
 
-    let mut full_path = CONFIG.file_dir.clone();
+    let file_dir = match node_id {
+        Some(node_id) => CONFIG
+            .find_node(node_id)
+            .ok_or_else(|| anyhow!("no node with id {node_id} found"))?
+            .get_file_dir(&CONFIG),
+        None => CONFIG.file_dir.clone(),
+    };
+
+    let mut full_path = file_dir;
     full_path.push(file_path);
-    full_path
+    Ok(full_path)
 }
 
 #[tracing::instrument(level = "debug", ret)]

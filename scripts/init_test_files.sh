@@ -34,6 +34,7 @@ EOF
 id = $j
 tarpc_addr = "127.0.0.1:20$(printf '%02d' $j)"
 ssh_addr = "127.0.0.1:21"
+file_dir = "./data/$j/files"
 EOF
 	done
 done

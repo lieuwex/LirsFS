@@ -10,7 +10,7 @@ pub async fn copy_to(target_node: NodeId, filename: impl AsRef<Utf8Path>) -> Res
     let remote_host = CONFIG
         .get_node_ssh_host(target_node)
         .ok_or_else(|| anyhow!("Target node with id {:?} not found in config", target_node))?;
-    let full_path = util::prepend_fs_dir(filename);
+    let full_path = util::prepend_fs_dir(filename, Some(target_node))?;
 
     let output = Command::new("rsync")
         .arg("--compress")

@@ -57,6 +57,16 @@ pub struct Node {
     pub id: NodeId,
     pub tarpc_addr: SocketAddr,
     pub ssh_addr: SocketAddr,
+    /// file_dir overrides the file_dir set in the root of the config.
+    pub file_dir: Option<Utf8PathBuf>,
+}
+
+impl Node {
+    pub fn get_file_dir(&self, parent: &Config) -> Utf8PathBuf {
+        self.file_dir
+            .clone()
+            .unwrap_or_else(|| parent.file_dir.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,7 +146,7 @@ impl Config {
         self.node_id
     }
 
-    fn find_node(&self, node_id: NodeId) -> Option<&Node> {
+    pub fn find_node(&self, node_id: NodeId) -> Option<&Node> {
         // Yes, O(N), what are you going to do about it?
         self.nodes.iter().find(|n| n.id == node_id)
     }
