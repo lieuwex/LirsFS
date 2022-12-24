@@ -7,7 +7,7 @@ use crate::{
     filesystem::FileContentHash,
     util::{blob_to_hash, flatten_result},
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -111,6 +111,10 @@ impl File {
         path: Utf8PathBuf,
         replication_factor: u64,
     ) -> Result<FileRow> {
+        if path.file_name().is_none() {
+            bail!("path does not contain a file name");
+        }
+
         let now = SystemTime::now();
         query("INSERT INTO files(path, is_file, size, modified_at, replication_factor) VALUES(?1, TRUE, 0, ?2, ?3)")
             .bind(path.as_str())
